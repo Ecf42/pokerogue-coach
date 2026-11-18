@@ -232,6 +232,21 @@
         },
       },
       {
+        name: "alvos_de_farm",
+        description: "Caçador de desbloqueios: o que mais vale farmar no save (passivas perto de liberar, reduções de custo, ovos da mesma espécie com chance de egg move ou habilidade oculta, natures que faltam), do mais para o menos útil. Retorna {total, alvos:[{pokemon, alvo, situacao}]}.",
+        inputSchema: { type: "object", properties: {
+          tipo: { type: "string", enum: ["tudo", "prontos", "passiva", "custo", "ovo", "nature"], description: "prontos = dá para liberar agora com os doces que tem" },
+          pokemon: { type: "string", description: "Só deste Pokémon" },
+          limite: { type: "number", description: "Até 20, padrão 10" },
+        } },
+        run(i) {
+          let list = farmList(ctx, i.tipo);
+          if (i.pokemon) { const m = findOwned(ctx, i.pokemon); if (!m) throw new Error("Não está desbloqueado ou não achei: " + i.pokemon); list = list.filter(x => x.k === m.k); }
+          const lim = Math.min(20, Math.max(1, Number(i.limite) || 10));
+          return { total: list.length, alvos: list.slice(0, lim).map(x => { const t = farmText(x); return { pokemon: x.pokemon, alvo: t.titulo, situacao: t.detalhe }; }) };
+        },
+      },
+      {
         name: "rota_biomas",
         description: "Rota de biomas no Clássico. Alvo pode ser um bioma (chance de chegar até o fim da run e qual link escolher na próxima troca) ou um Pokémon (melhores biomas para achar ele ou a pré evolução, com chance de ver numa passagem e de chegar lá). Considera se o jogador tem Map. Retorna dados compactos.",
         inputSchema: { type: "object", properties: {
@@ -245,8 +260,32 @@
     ];
   }
 
+  // ---- caçador de desbloqueios (Fase 5): lista filtrada e texto de cada item, usados pela ferramenta e pela aba Farm
+  function farmList(ctx, tipo) {
+    const all = L.farmTargets(ctx.owned, ctx.game);
+    if (!tipo || tipo === "tudo") return all;
+    if (tipo === "prontos") return all.filter(x => x.falta === 0);
+    return all.filter(x => x.tipo === tipo);
+  }
+  function farmText(x) {
+    const doces = x.custoDoces == null ? "" : x.falta === 0 ? `Pronto: tem ${x.doces} de ${x.custoDoces} doces.` : `${x.falta === 1 ? "Falta 1 doce" : `Faltam ${x.falta} doces`} (tem ${x.doces} de ${x.custoDoces}).`;
+    if (x.tipo === "passiva") return { titulo: `Passiva ${title(x.passiva)}${x.liga ? ` (liga ${x.liga})` : ""}`, detalhe: doces };
+    if (x.tipo === "custo") return { titulo: `Custo de ${x.de} para ${x.para} pontos`, detalhe: doces };
+    if (x.tipo === "ovo") {
+      const ms = x.eggMoves.map(e => title(e.k) + (e.rare ? " (raro)" : "")).join(", ");
+      const partes = [];
+      if (x.eggMoves.length) partes.push(`${pct(x.chanceEggMove)}% de liberar egg move novo (${ms})`);
+      if (x.oculta) partes.push(`${pct(x.chanceOculta)}% de liberar ${title(x.oculta)}`);
+      return { titulo: `Ovo da mesma espécie (${x.custoDoces} doces)`, detalhe: `Por ovo: ${partes.join("; ")}. ${doces}` };
+    }
+    return { titulo: `Nature ${x.natures.join(" ou ")}`, detalhe: "Capture ou choque um com essa nature para liberar." };
+  }
+
+  const END_NOME = "Fim do Clássico (???, waves 191 a 199)";
   function findBiome(ctx, s) {
     const q = norm(s);
+    // o END se chama "???" no jogo, que some ao normalizar
+    if ((!q && /\?/.test(String(s))) || q === "fim" || q === "fimdoclassico" || q === "end") return ctx.biomes.biomes.find(x => x.k === "END") || null;
     return q ? ctx.biomes.biomes.find(x => norm(x.k) === q || norm(x.nome) === q) || ctx.biomes.biomes.find(x => norm(x.nome).includes(q) || norm(x.k).includes(q)) || null : null;
   }
 
@@ -258,6 +297,7 @@
     const bname = k => (ctx.biomes.biomes.find(b => b.k === k) || {}).nome || k;
     const base = { de: from.nome, wave, trocas_restantes: steps, map: map ? "sim" : "não" };
     const tb = findBiome(ctx, i.alvo);
+    if (tb && tb.k === "END") return { ...base, alvo: END_NOME, chance_de_chegar: "100%", observacao: "No Clássico o jogo leva para lá sozinho depois da wave 190; não tem como chegar antes." };
     const d = tb ? null : findDex(ctx, i.alvo);
     if (tb && (!d || norm(tb.nome) === norm(i.alvo) || norm(tb.k) === norm(i.alvo))) {
       const r = L.planRoute(ctx.biomes, from.k, tb.k, steps, map);
@@ -276,7 +316,7 @@
     return {
       ...base, alvo: pname(sp[1]),
       melhores_biomas: h.map(x => ({
-        bioma: x.nome, aparece_como: x.formas.map(pname).join(", "),
+        bioma: x.k === "END" ? END_NOME : x.nome, aparece_como: x.formas.map(pname).join(", "),
         por_batalha: pct(x.porBatalha) + "%", como_chefe: pct(x.chefe) + "%",
         numa_passagem: pct(x.passagem) + "%", chance_de_chegar: pct(x.chegar) + "%",
       })),
@@ -414,6 +454,6 @@
     return [{ role: "user", content: rules(ctx, mode, runInfo) }, ...h];
   }
 
-  const api = { makeCtx, tools, findOwned, findDex, findBiome, routeAnswer, detectSave, summarizeSession, summarizeHistory, nextFixed, rules, buildTurns, MODES, norm };
+  const api = { makeCtx, tools, findOwned, findDex, findBiome, routeAnswer, farmList, farmText, detectSave, summarizeSession, summarizeHistory, nextFixed, rules, buildTurns, MODES, norm };
   if (typeof module !== "undefined") module.exports = api; else root.PRA = api;
 })(this);

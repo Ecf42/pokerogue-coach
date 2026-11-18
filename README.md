@@ -9,5 +9,6 @@ node tests/test_data.js               # testes dos dados
 node tests/test_logic.js              # testes do gerador
 node tests/test_agent.js              # testes do agente
 node tests/test_routes.js             # testes da rota de biomas
+node tests/test_farm.js               # testes do caçador de desbloqueios
 python scripts/build_page.py          # gera dist/index.html para publicar no claude.ai
 ```

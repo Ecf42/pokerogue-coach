@@ -167,11 +167,13 @@ def parse_species(src, FK):
                     changes.append(dict(pre=form_key(pre, FK), to=form_key(to, FK), item=it.group(1)))
             tmb = field_block(b, "tms")
             sc, st = g("starterCost"), g("starter")
+            etier = (g("eggTier") or "EggTier.COMMON").split(".")[-1]
             species[name] = dict(
                 **base, bst=sum(base["stats"]), cost=int(sc) if sc else None,
                 starter=st.split(".")[-1] if st else None, evos=evos,
                 passive=passives.get(0), passives=passives, forms=forms, changes=changes,
                 tms=re.findall(r"MoveId\.(\w+)", tmb) if tmb else [],
+                egg_tier=["COMMON", "RARE", "EPIC", "LEGENDARY"].index(etier),
                 mythical="mythical: true" in b, legendary="legendary: true" in b, sub="subLegendary: true" in b)
             m = re.search(r"levelMoves:\s*\[(.*?)\n\s*\],", b, re.S)
             if m:
@@ -342,7 +344,7 @@ def main():
         ab_used(*F["ab"], s["passive"], F["passive"])
         e = dict(k=n, id=SP[n], f=p[-1], ty=[t for t in F["types"] if t != "null"], st=F["stats"],
                  ab=F["ab"], pa=s["passive"], em=[mi(m) for m in EM.get(n, [])], c=s["cost"],
-                 lg=lg, mv=mv, ch=len(p))
+                 lg=lg, mv=mv, ch=len(p), et=s["egg_tier"])
         # O jogo usa a passiva da espécie atual (PokemonSpecies.getPassiveAbility). Quando a forma final tem
         # passiva diferente da do inicial, guardamos as duas: pa (inicial, igual à tela de seleção) e paf (final).
         if F["passive"] and F["passive"] != s["passive"]:

@@ -100,8 +100,9 @@
 
   <div class="tabs">
     <div class="tab on" data-tab="gen">Gerar</div>
-    <div class="tab" data-tab="leg">Lendários</div>
+    <div class="tab" data-tab="leg">Lendas</div>
     <div class="tab" data-tab="col">Coleção</div>
+    <div class="tab" data-tab="farm">Farm</div>
     <div class="tab" data-tab="rota">Rotas</div>
     <div class="tab" data-tab="coach">Coach</div>
   </div>
@@ -135,6 +136,12 @@
       <select id="sort"><option value="score">Mais fortes</option><option value="cost">Mais baratos</option><option value="value">Melhor custo</option></select>
     </div>
     <div class="list" id="col"></div>
+  </section>
+
+  <section id="tab-farm" class="hide">
+    <p class="info">O que mais vale farmar com o seu save: passivas e reduções de custo perto de liberar, ovos da mesma espécie que podem liberar egg move ou habilidade oculta, e natures que faltam. Os mais fortes e os mais perto de liberar vêm primeiro.</p>
+    <div class="chips" id="farmChips"></div>
+    <div class="list" id="farmList"></div>
   </section>
 
   <section id="tab-rota" class="hide">
@@ -231,7 +238,7 @@ function alertBox(t){ $("info").textContent = t; }
 // ---------- tabs ----------
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  ["gen","leg","col","rota","coach"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
+  ["gen","leg","col","farm","rota","coach"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
 });
 
 // ---------- gerar ----------
@@ -362,7 +369,7 @@ function renderCol(){
 }
 $("q").oninput = renderCol; ft.onchange = renderCol; $("sort").onchange = renderCol;
 
-function renderAll(){ fillMono(); renderLegs(); renderCol(); }
+function renderAll(){ fillMono(); renderLegs(); renderCol(); if (typeof renderFarm === "function" && $("farmChips")) renderFarm(); }
 // ---------- coach (agente com a capability sample) ----------
 const A = window.PRA;
 let sample = null, sampleLimits = null, chat = [], mode = "conversa", runInfo = null, images = [], ctl = null, busy = false, noTools = false, fatal = false;
@@ -533,6 +540,26 @@ $("rGo").onclick = () => {
   try { $("rOut").innerHTML = routeHTML(A.routeAnswer(A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label }), { de: $("rFrom").value, alvo: $("rTo").value, wave: $("rWave").value, tem_map: $("rMap").checked })); }
   catch (e) { $("rOut").innerHTML = `<p class="info">${esc(e.message || "Não deu para calcular.")}</p>`; }
 };
+
+// ---------- farm (Fase 5) ----------
+const FARM_TABS = { tudo: "Tudo", prontos: "Prontos agora", passiva: "Passivas", custo: "Custo", ovo: "Ovos", nature: "Natures" };
+let farmTab = "tudo";
+function renderFarm(){
+  $("farmChips").innerHTML = Object.entries(FARM_TABS).map(([k, n]) => `<div class="chip${k === farmTab ? " on" : ""}" data-f="${k}">${n}</div>`).join("");
+  $("farmChips").querySelectorAll("[data-f]").forEach(c => c.onclick = () => { farmTab = c.dataset.f; renderFarm(); });
+  const ctx = A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label });
+  const list = A.farmList(ctx, farmTab);
+  $("farmList").innerHTML = list.slice(0, 60).map(x => {
+    const m = owned.find(o => o.k === x.k), t = A.farmText(x);
+    const btn = x.tipo === "nature" ? `<button class="btn" data-hunt="${esc(x.inicial)}">Onde caçar</button>` : (x.falta === 0 ? `<span class="tag">pronto</span>` : "");
+    return `<div class="li"><div class="ball" style="width:34px;height:34px;font-size:9px;background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${esc(m.fin.slice(0,2).toUpperCase())}</div>
+      <div class="grow"><div class="nm">${esc(x.pokemon)} <span class="muted" style="font-weight:400;font-size:12px">${esc(t.titulo)}</span></div>
+      <div class="info" style="font-size:12px;white-space:normal">${esc(t.detalhe)}</div></div>${btn}</div>`;
+  }).join("") + (list.length > 60 ? `<p class="info">Mostrando 60 de ${list.length}.</p>` : "") || `<p class="info">Nada nessa categoria.</p>`;
+  $("farmList").querySelectorAll("[data-hunt]").forEach(b => b.onclick = () => {
+    $("rTo").value = b.dataset.hunt; document.querySelector('.tab[data-tab="rota"]').click(); $("rGo").click();
+  });
+}
 
 status(); renderAll(); gen();
 </script>

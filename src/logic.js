@@ -85,7 +85,7 @@
       const names = new Set([...s.mv, ...egg].map(i => game.moves[i][0]));
       out.push({ k: s.k, id: s.id, name: pname(s.k), fin: pname(s.f), finKey: s.f, ty: s.ty, st: s.st, bst, cost: Math.max(0, s.c - vr), base: s.c, lg: s.lg,
         abil: uniq, allAb: s.ab.filter(x => x !== "NONE"), passive, passiveStart, egg, nats, nat: best, natFit: bs, iv, ivSum, role: r, mv: s.mv, score,
-        ch: s.ch, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
+        ch: s.ch, et: s.et || 0, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
         hasSetup: (r === "P" ? SETUP_P : SETUP_E).some(n => names.has(n)), hasHeal: HEAL.some(n => names.has(n)) });
     }
     // tipos de dano dos golpes sugeridos (sem clima): usado na cobertura ofensiva do tema Equilibrado
@@ -637,14 +637,61 @@
       if (!pw && !pb) continue;
       const battles = 9 * (b.trainerChance ? 1 - 1 / b.trainerChance : 1);
       const stay = 1 - Math.pow(1 - pw, battles) * (1 - pb);
-      const reach = from === b.k ? 1 : reachTable(biomes, b.k, steps, hasMap)[from];
+      // o END não tem link de entrada: no Clássico o jogo leva todo mundo para lá depois da wave 190
+      const reach = from === b.k || b.k === "END" ? 1 : reachTable(biomes, b.k, steps, hasMap)[from];
       out.push({ k: b.k, nome: b.nome, formas: line.filter(k => wild[k] || boss[k]), porBatalha: pw, chefe: pb, passagem: stay, chegar: reach, total: stay * reach });
     }
     return out.sort((a, b) => b.total - a.total || b.passagem - a.passagem);
   }
 
+  // ---- Fase 5: caçador de desbloqueios
+
+  // src/data/balance/rates.ts: ovo da mesma espécie tem 1/x de egg move raro (x pelo tier do ovo da espécie) e
+  // (1 - 1/x)/3 para cada comum; habilidade oculta com 1/8.
+  const BOOSTED_RARE_EGGMOVE = [12, 8, 6, 4], SAME_SPECIES_HA = 8;
+  function eggOdds(m, s, game) {
+    const x = BOOSTED_RARE_EGGMOVE[s.et || 0], pIdx = i => (i === 3 ? 1 / x : (1 - 1 / x) / 3);
+    const missing = [0, 1, 2, 3].filter(i => s.em[i] != null && !m.egg.includes(s.em[i]))
+      .map(i => ({ i, k: game.moves[s.em[i]][0], rare: i === 3, p: pIdx(i) }));
+    const ha = s.ab[2] && s.ab[2] !== "NONE" && !m.abil.includes(s.ab[2]) ? s.ab[2] : null;
+    return { missing, pMove: missing.reduce((a, x) => a + x.p, 0), ha, pHa: ha ? 1 / SAME_SPECIES_HA : 0 };
+  }
+
+  // Lista do que vale farmar, da maior prioridade para a menor. tipo: passiva, custo, ovo, nature.
+  // ganho está na escala do score (passiva liberada = +30, egg move = +8, nature = +8 por ponto de encaixe).
+  // prioridade = ganho x força relativa do Pokémon / (1 + doces que faltam / 10)
+  function farmTargets(owned, game) {
+    const S = new Map(game.starters.map(s => [s.k, s])), out = [];
+    for (const m of owned) {
+      const s = S.get(m.k), cc = candyCosts(m.base, game);
+      if (!s || !cc) continue;
+      const rel = Math.pow(m.score / 550, 3);
+      // nature não custa doce, mas depende de sorte (capturar ou chocar com a nature certa): conta como esforço de ~20
+      // doces, e o dobro para lendários e míticos, que quase não aparecem selvagens
+      const add = (tipo, ganho, need, extra) => {
+        const falta = need == null ? null : Math.max(0, need - m.candy);
+        const esforco = need == null ? 20 * (m.lg ? 2 : 1) : falta;
+        out.push({ k: m.k, pokemon: m.fin, inicial: m.name, tipo, ganho, doces: m.candy, custoDoces: need, falta,
+          prioridade: ganho * rel / (1 + esforco / 10), ...extra });
+      };
+      const pFinal = s.paf || s.pa;
+      if (!m.paUnlocked && pFinal) {
+        const liga = Object.keys(WEATHER).find(w => WEATHER[w].setters.includes(pFinal));
+        add("passiva", 30 + (liga ? 15 : 0), cc.passiva, { passiva: pFinal, ...(liga ? { liga: WEATHER[liga].nome } : {}) });
+      }
+      if (m.vr < 2 && m.cost > 1) add("custo", 12 * m.score / 500, cc.reducao[m.vr], { de: m.cost, para: m.cost - 1 });
+      const e = eggOdds(m, s, game);
+      if (e.missing.length || e.ha) add("ovo", 8 * e.pMove + 12 * e.pHa, cc.ovo, { eggMoves: e.missing, chanceEggMove: e.pMove, oculta: e.ha, chanceOculta: e.pHa });
+      let best = m.natFit;
+      const fits = [];
+      for (let n = 0; n < 25; n++) { const v = natureScore(m.st, m.role, n); if (v > m.natFit + 0.5) fits.push([n, v]); if (v > best) best = v; }
+      if (fits.length) add("nature", 8 * (best - m.natFit), null, { natures: fits.sort((a, b) => b[1] - a[1]).slice(0, 2).map(x => NATS[x[0]]) });
+    }
+    return out.sort((a, b) => b.prioridade - a.prioridade);
+  }
+
   const api = { NATS, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
     defMult, balanceReport, lateGame, bigForms, formText, INTERACTIONS, interactionsFor, CHALLENGES, genOf,
-    tmsOf, candyCosts, biomeOdds, nextBiomeOdds, linkOutcomes, reachTable, switchesLeft, minSwitches, planRoute, huntSpecies };
+    tmsOf, candyCosts, biomeOdds, nextBiomeOdds, linkOutcomes, reachTable, switchesLeft, minSwitches, planRoute, huntSpecies, eggOdds, farmTargets };
   if (typeof module !== "undefined") module.exports = api; else root.PRL = api;
 })(this);

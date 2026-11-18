@@ -55,6 +55,9 @@ ok(h.every(x => x.passagem > 0 && x.passagem <= 1 && x.chegar >= 0 && x.chegar <
 const ar = L.huntSpecies(biomes, dex.prevo, "ARTICUNO", "ICE_CAVE", 0, true)[0];
 ok(ar.k === "ICE_CAVE" && near(ar.porBatalha, 1 / 512 / 2) && ar.chegar === 1, "Articuno na Caverna de Gelo");
 
+const fm = L.huntSpecies(biomes, dex.prevo, "FLUTTER_MANE", "TOWN", 18, false).find(x => x.k === "END");
+ok(fm && fm.chegar === 1, "END: o jogo leva sozinho, chance de chegar 100%");
+
 // ---- ferramenta do agente
 const owned = L.buildOwned(game, require("../fixtures/mysave_unlocks.json"));
 const ctx = A.makeCtx({ game, biomes, dex, owned, label: "x" });
@@ -68,6 +71,8 @@ ok(r2.alvo === "Charizard" && r2.melhores_biomas.length > 0 && r2.melhores_bioma
 ok(/ovos/.test(T.rota_biomas.run({ de: "Cidade", alvo: "Mew" }).resultado || ""), "Pokémon que não aparece em bioma");
 for (const bad of [{ de: "Lugar", alvo: "Cidade" }, { de: "Cidade", alvo: "Xyzzy" }]) { let e = false; try { T.rota_biomas.run(bad); } catch (x) { e = true; } ok(e, "entrada inválida deveria dar erro"); }
 ok(Buffer.byteLength(JSON.stringify(r2)) < 4000, "resposta da rota pequena");
+ok(T.rota_biomas.run({ de: "Cidade", alvo: "Flutter Mane" }).melhores_biomas[0].bioma.startsWith("Fim do Clássico"), "Pokémon do END");
+ok(T.rota_biomas.run({ de: "Cidade", alvo: "???" }).chance_de_chegar === "100%", "alvo END");
 
 console.log(fail ? `${fail} falhas` : "tudo ok");
 process.exit(fail ? 1 : 0);

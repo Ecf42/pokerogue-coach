@@ -16,7 +16,7 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 * `fetch` para outros sites é bloqueado. Imagens remotas não carregam (só `data:` e `blob:`). Por isso não tem sprite: usamos bolinhas com as cores dos tipos.
 * `alert`, `confirm`, `prompt`, `window.print` e downloads iniciados pela página não funcionam. Diálogos têm que ser da própria página; para exportar, botão de Copiar.
 * `localStorage` pode falhar: sempre com try/catch, e só para conveniência (o save carregado fica lá).
-* Tamanho atual ~548 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
+* Tamanho atual ~560 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
 
 ## Estrutura
 
@@ -32,11 +32,12 @@ tests/test_logic.js            node tests/test_logic.js (gerador de times)
 tests/test_data.js             node tests/test_data.js (dados extraídos e acessores tmsOf, candyCosts, biomeOdds, nextBiomeOdds)
 tests/test_agent.js            node tests/test_agent.js (ferramentas do agente, sessão e histórico sintéticos)
 tests/test_routes.js           node tests/test_routes.js (rota de biomas e caça)
+tests/test_farm.js             node tests/test_farm.js (caçador de desbloqueios)
 docs/sample-capability.md      API para chamar o Claude de dentro da página
 fixtures/                      saves do Eric (os .prsv ficam fora do git)
 ```
 
-Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `node tests/test_routes.js`, `python scripts/build_page.py`.
+Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `node tests/test_routes.js`, `node tests/test_farm.js`, `python scripts/build_page.py`.
 
 ## Fonte dos dados
 
@@ -102,11 +103,13 @@ Bits:
 * `src/logic.js` não pode depender do DOM: tem que rodar no node para os testes.
 * Toda mudança na lógica ganha teste em `tests/`. Antes de entregar, rodar os testes e fazer o build. Tirar print do `dist/index.html` em 420px de largura (o Eric usa muito no celular) e conferir. Sem Playwright, dá com o Edge headless (`msedge --headless=new --screenshot --window-size=420,3000`), mas ele não desce de ~490px de viewport: colocar a página num `<iframe>` de 420px e fotografar o wrapper.
 
-## Estado atual (v4)
+## Estado atual (v5)
 
-Abas Gerar, Lendários, Coleção, Rotas e Coach. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
+Abas Gerar, Lendas, Coleção, Farm, Rotas e Coach. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
 
 Aba Coach (v3): chat com o Claude via `sample`, modos Conversa, Carry, Conselheiro da run e Raio X das runs. Ferramentas da página (`src/agent.js`): `buscar_iniciais`, `detalhes`, `gerar_time` (o time aparece na aba Gerar), `analisar_time`, `habilidade`, `bioma`. "Carregar run" aceita a sessão exportada ou o histórico de runs; a página resume (`summarizeSession`, `summarizeHistory`) e só o resumo vai para o Claude. "Anexar print" manda imagens. Sem `window.claude` (fora do claude.ai) a aba mostra um aviso e o resto funciona.
+
+Aba Farm (v5): `L.farmTargets` lista passivas e reduções de custo (doces que faltam), ovos da mesma espécie (chance por ovo de egg move novo e de habilidade oculta, regras de `rates.ts`: raro 1/x com x = 12, 8, 6, 4 pelo `et` tier de ovo do inicial, oculta 1/8) e natures que faltam (botão Onde caçar abre a Rotas). Prioridade = ganho em score x força relativa / esforço. O agente usa a mesma lista pela ferramenta `alvos_de_farm`.
 
 Aba Rotas (v4): de um bioma até outro bioma ou até um Pokémon, pela wave e com ou sem Map (`A.routeAnswer`, a mesma resposta da ferramenta `rota_biomas` do agente).
 
@@ -154,7 +157,7 @@ Instruções do agente ficam num turno `user` fixo no começo da conversa: respo
 Em `logic.js`: `linkOutcomes`, `reachTable` (programação dinâmica: V_k(b) = chance de chegar ao alvo em até k trocas; com Map pega o melhor link que apareceu, sem Map a média), `switchesLeft` (trocas depois das waves 10..180; na 190 o jogo força o END), `planRoute` (chance, valor de cada próximo link, caminho ideal desempatando pela chegada mais cedo) e `huntSpecies` (biomas onde o Pokémon ou uma pré evolução aparece, via `dex.prevo`; passagem = 9 batalhas comuns e 1 chefe, aproximado).
 Busca no grafo de biomas maximizando a probabilidade de chegar ao bioma alvo em N trocas, considerando que o Map permite escolher o caminho.
 
-### Fase 5: caçador de desbloqueios
+### Fase 5: caçador de desbloqueios (feita em 18/11/2026)
 Ranking do que dá mais retorno: passivas perto de liberar, Pokémon que ficam baratos com poucos doces, natures e egg moves que faltam nos melhores Pokémon.
 
 ### Fase 6 (pesquisa): ler a run ao vivo
