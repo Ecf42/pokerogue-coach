@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gerador de Times PokéRogue</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+  :root{--bg:#10121a;--panel:#1a1e2b;--panel2:#222839;--line:#2e3549;--ink:#eef1f7;--muted:#9aa3b8;--acc:#4fd1ff;--acc2:#ffcf4a;--good:#4ade80;--bad:#f87171}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,system-ui,sans-serif;font-size:14px}
+  .wrap{max-width:860px;margin:0 auto;padding:16px 14px 60px}
+  h1{font-family:"Press Start 2P",monospace;font-size:15px;line-height:1.5;margin:4px 0 6px;color:var(--acc2)}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 12px}
+  .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .bar .st{flex:1;min-width:180px;font-size:13px;color:var(--muted)}
+  .bar .st b{color:var(--ink)}
+  button,.btn,select,input{font-family:inherit;font-size:13px}
+  .btn{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:8px 12px;cursor:pointer}
+  .btn:hover{border-color:var(--acc)}
+  .btn.pri{background:var(--acc);color:#04202b;border-color:var(--acc);font-weight:700}
+  .tabs{display:flex;gap:6px;margin:14px 0 10px}
+  .tab{flex:1;text-align:center;padding:9px 6px;border-radius:9px;background:var(--panel);border:1px solid var(--line);cursor:pointer;color:var(--muted);font-weight:600}
+  .tab.on{color:var(--ink);border-color:var(--acc);background:var(--panel2)}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
+  .chip{padding:7px 11px;border-radius:999px;background:var(--panel);border:1px solid var(--line);cursor:pointer;font-size:13px;color:var(--muted)}
+  .chip.on{background:var(--acc2);border-color:var(--acc2);color:#2a2000;font-weight:700}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  label.sm{font-size:12px;color:var(--muted)}
+  select,input[type=text]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+  .summary{margin:14px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .summary .pts{font-family:"Press Start 2P",monospace;font-size:12px;color:var(--acc2)}
+  .info{color:var(--muted);font-size:13px}
+  .grid{display:grid;grid-template-columns:1fr;gap:10px}
+  @media(min-width:640px){.grid{grid-template-columns:1fr 1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;position:relative}
+  .card.locked{border-color:var(--acc2)}
+  .top{display:flex;gap:10px;align-items:flex-start}
+  .ball{width:42px;height:42px;border-radius:50%;flex:none;display:grid;place-items:center;font-family:"Press Start 2P",monospace;font-size:11px;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+  .nm{font-weight:700;font-size:15px}
+  .evo{color:var(--muted);font-size:12px}
+  .cost{position:absolute;top:10px;right:10px;font-family:"Press Start 2P",monospace;font-size:10px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:4px 6px;color:var(--acc2)}
+  .types{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
+  .ty{font-size:11px;font-weight:700;color:#fff;padding:2px 7px;border-radius:5px;text-shadow:0 1px 1px rgba(0,0,0,.4)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:10px 0 6px;font-size:13px}
+  .kv .k{color:var(--muted)}
+  .tag{display:inline-block;font-size:11px;border-radius:5px;padding:1px 6px;margin-left:4px;background:#3b2f0a;color:var(--acc2);border:1px solid #6b5514}
+  .tag.blue{background:#0c2a36;color:var(--acc);border-color:#1b5368}
+  .moves{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:6px}
+  .mv{border-radius:7px;padding:5px 7px;font-size:12px;font-weight:600;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.45);display:flex;justify-content:space-between;gap:4px}
+  .mv small{opacity:.85;font-weight:400}
+  .stats{display:grid;grid-template-columns:28px 1fr 28px;gap:2px 6px;font-size:11px;color:var(--muted);margin-top:8px}
+  .sbar{height:6px;background:var(--panel2);border-radius:3px;margin-top:4px;overflow:hidden}
+  .sbar i{display:block;height:100%;border-radius:3px}
+  .acts{display:flex;gap:6px;margin-top:10px}
+  .acts .btn{flex:1;padding:6px 8px;font-size:12px}
+  .weak{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:12px;font-size:13px}
+  .weak .types{margin-top:6px}
+  .list{display:flex;flex-direction:column;gap:6px}
+  .li{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+  .li .grow{flex:1;min-width:0}
+  .li .nm{font-size:14px}
+  .li .meta{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rank{font-family:"Press Start 2P",monospace;font-size:11px;color:var(--acc2);width:26px;text-align:center}
+  .muted{color:var(--muted)}
+  .toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:var(--acc);color:#04202b;padding:9px 14px;border-radius:9px;font-weight:700;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.on{opacity:1}
+  .hide{display:none}
+  .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
+  .why{font-size:12px;line-height:1.45;margin-top:8px;padding:7px 9px;border-radius:8px;background:var(--panel2);border-left:3px solid var(--acc2)}
+  .tms{font-size:12px;margin-top:8px;line-height:1.6}
+  .tms .tmn{display:inline-block;color:#fff;font-weight:600;border-radius:5px;padding:0 6px;text-shadow:0 1px 1px rgba(0,0,0,.45)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Gerador de Times</h1>
+  <p class="sub">Times iniciais criativos pro PokéRogue, usando só o que você já desbloqueou.</p>
+
+  <div class="bar">
+    <div class="st" id="saveStatus"></div>
+    <label class="btn" for="file">Carregar save (.prsv)</label>
+    <input type="file" id="file" accept=".prsv,.json,.txt" class="hide">
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" data-tab="gen">Gerar</div>
+    <div class="tab" data-tab="leg">Lendários</div>
+    <div class="tab" data-tab="col">Coleção</div>
+  </div>
+
+  <section id="tab-gen">
+    <div class="chips" id="themes"></div>
+    <div class="row">
+      <label class="sm">Pontos</label>
+      <select id="budget"><option>10</option><option>12</option><option>15</option><option>20</option><option>30</option></select>
+      <label class="sm">Tamanho</label>
+      <select id="size"><option>3</option><option>4</option><option>5</option><option selected>6</option></select>
+      <select id="mono" class="hide"></select>
+      <button class="btn pri" id="go">Gerar time</button>
+      <button class="btn" id="copy">Copiar</button>
+    </div>
+    <div class="summary"><div class="info" id="info"></div><div class="pts" id="pts"></div></div>
+    <div class="grid" id="team"></div>
+    <div class="weak" id="weak"></div>
+  </section>
+
+  <section id="tab-leg" class="hide">
+    <p class="info">Ranking pelos seus desbloqueios: status do Pokémon, a melhor nature que você tem pra ele, IVs, egg moves e passiva.</p>
+    <div class="list" id="legs"></div>
+  </section>
+
+  <section id="tab-col" class="hide">
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="q" placeholder="Buscar Pokémon" style="flex:1;min-width:140px">
+      <select id="ftype"><option value="">Todos os tipos</option></select>
+      <select id="sort"><option value="score">Mais fortes</option><option value="cost">Mais baratos</option><option value="value">Melhor custo</option></select>
+    </div>
+    <div class="list" id="col"></div>
+  </section>
+
+  <p class="note">Os golpes sugeridos vêm dos golpes por nível e dos egg moves que você já desbloqueou; golpes marcados com ★ são egg moves. Os TMs ficam à parte porque dependem da loja: vale pegar se aparecerem (o tier diz em que raridade eles saem). A passiva mostrada é a da forma final, que é a que vale em batalha depois de evoluir. A nature sugerida é a melhor entre as que você tem desbloqueadas pra aquele Pokémon.</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const GAME = __GAME__;
+const BIOMES = __BIOMES__;
+const DEFAULT_UNLOCKS = __UNLOCKS__;
+const DEFAULT_LABEL = "__LABEL__";
+</script>
+<script>
+__LOGIC__
+</script>
+<script>
+const L = window.PRL;
+const TY = {NORMAL:["Normal","#9fa19f"],FIRE:["Fogo","#e62829"],WATER:["Água","#2980ef"],ELECTRIC:["Elétrico","#d4a800"],GRASS:["Planta","#3fa129"],ICE:["Gelo","#3dc7ef"],FIGHTING:["Lutador","#ff8000"],POISON:["Venenoso","#9141cb"],GROUND:["Terra","#915121"],FLYING:["Voador","#81b9ef"],PSYCHIC:["Psíquico","#ef4179"],BUG:["Inseto","#91a119"],ROCK:["Pedra","#afa981"],GHOST:["Fantasma","#704170"],DRAGON:["Dragão","#5060e1"],DARK:["Sombrio","#624d4e"],STEEL:["Aço","#60a1b8"],FAIRY:["Fada","#ef70ef"]};
+const SAVE_KEY = "x0i2O7WRiANTqPmZ";
+const ab = a => L.title(a);
+const tyB = t => `<span class="ty" style="background:${TY[t][1]}">${TY[t][0]}</span>`;
+const $ = id => document.getElementById(id);
+
+let unlocks = DEFAULT_UNLOCKS, label = DEFAULT_LABEL;
+try { const s = localStorage.getItem("prl_unlocks"); if (s) { const o = JSON.parse(s); unlocks = o.u; label = o.l; } } catch (e) {}
+let owned = L.buildOwned(GAME, unlocks);
+let theme = "lenda", current = null, locked = new Set();
+
+function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("on"); setTimeout(()=>el.classList.remove("on"),1600); }
+function status(){ $("saveStatus").innerHTML = `Save: <b>${label}</b> · ${owned.length} iniciais · ${owned.filter(m=>m.lg).length} lendários/míticos`; }
+
+// ---------- upload ----------
+function unlocksFromSave(d){
+  const sd = d.starterData, dex = d.dexData;
+  if (!sd || !dex) throw new Error("Esse arquivo não parece ser o save principal (data). O runHistory não serve aqui.");
+  const g = (o, a, b) => o[a] ?? o[b];
+  const out = {};
+  for (const id in sd){
+    const s = sd[id], x = dex[id] || {};
+    const ca = g(x,"$ca","caughtAttr"); if (!ca || ca === "0") continue;
+    out[id] = [g(s,"$vr","valueReduction")||0, g(s,"$a","abilityAttr")||0, g(s,"$pa","passiveAttr")||0, g(s,"$em","eggMoves")||0, Number(g(x,"$na","natureAttr")||0), g(x,"$i","ivs")||[0,0,0,0,0,0], g(s,"$x","candyCount")||0];
+  }
+  return out;
+}
+$("file").addEventListener("change", async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    let txt = (await f.text()).trim(), data;
+    if (txt.startsWith("{")) data = JSON.parse(txt);
+    else { const dec = CryptoJS.AES.decrypt(txt, SAVE_KEY).toString(CryptoJS.enc.Utf8); data = JSON.parse(dec); }
+    unlocks = unlocksFromSave(data);
+    const ts = data.timestamp ? new Date(data.timestamp) : new Date();
+    label = ts.toLocaleDateString("pt-BR");
+    try { localStorage.setItem("prl_unlocks", JSON.stringify({u: unlocks, l: label})); } catch (e) {}
+    owned = L.buildOwned(GAME, unlocks); locked.clear(); status(); renderAll(); gen(); toast("Save carregado");
+  } catch (err) { alertBox(err.message || "Não consegui ler esse arquivo."); }
+  e.target.value = "";
+});
+function alertBox(t){ $("info").textContent = t; }
+
+// ---------- tabs ----------
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+  ["gen","leg","col"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
+});
+
+// ---------- gerar ----------
+const themesEl = $("themes");
+for (const [k, n] of Object.entries(L.THEMES)) {
+  const c = document.createElement("div"); c.className = "chip" + (k === theme ? " on" : ""); c.textContent = n; c.dataset.k = k;
+  c.onclick = () => { theme = k; document.querySelectorAll("#themes .chip").forEach(x => x.classList.toggle("on", x === c)); $("mono").classList.toggle("hide", k !== "mono"); gen(); };
+  themesEl.appendChild(c);
+}
+function fillMono(){
+  const m = $("mono"); m.innerHTML = `<option value="">Tipo aleatório</option>` + L.TYPES.filter(t => owned.filter(x => x.ty.includes(t)).length >= 5).map(t => `<option value="${t}">${TY[t][0]}</option>`).join("");
+}
+$("mono").onchange = gen;
+$("go").onclick = () => gen();
+$("budget").onchange = gen; $("size").onchange = gen;
+
+function opts(extra){ return Object.assign({ theme, budget: +$("budget").value, size: +$("size").value, monoType: $("mono").value || undefined, locked: [...locked] }, extra || {}); }
+function gen(){
+  current = L.generate(owned, opts());
+  renderTeam();
+}
+function reroll(k){
+  const keep = current.team.filter(m => m.k !== k).map(m => m.k);
+  const r = L.generate(owned, opts({ locked: keep, exclude: [k], challenge: current.challenge || undefined }));
+  current = r; renderTeam();
+}
+
+function statBars(st){
+  const n = ["HP","Atk","Def","SpA","SpD","Vel"];
+  return `<div class="stats">${st.map((v,i)=>`<span>${n[i]}</span><div class="sbar"><i style="width:${Math.min(100,v/1.6)}%;background:${v>=100?'#4ade80':v>=70?'#ffcf4a':'#f87171'}"></i></div><span>${v}</span>`).join("")}</div>`;
+}
+function nature(m){
+  const n = L.NATS[m.nat];
+  const PT = ["Atk","Def","Vel","SpA","SpD"];
+  const p = Math.floor(m.nat/5), q = m.nat%5;
+  return p === q ? `${n} <span class="muted">(neutra)</span>` : `${n} <span class="muted">(+${PT[p]} −${PT[q]})</span>`;
+}
+function abilityLine(m, ctx){
+  let a = m.abil.map(ab).join(" ou ") || "?";
+  let extra = "";
+  if (m.passive) extra += `<br><span class="muted">Passiva:</span> ${ab(m.passive)}<span class="tag">liberada</span>` + (m.passiveStart ? `<br><span class="muted">antes de evoluir: ${ab(m.passiveStart)}</span>` : "");
+  if (ctx) { const s = L.setterOf(m, ctx); if (s) extra += `<span class="tag blue">ativa ${L.WEATHER[ctx].nome}</span>`; }
+  return a + extra;
+}
+function cardHTML(m, ctx, note){
+  const mv = L.suggestMoves(m, GAME, ctx);
+  const tms = L.suggestTMs(m, GAME, ctx);
+  const forms = L.bigForms(m);
+  const lk = locked.has(m.k);
+  const leg = m.lg ? `<span class="tag">${["","Lendário","Sublendário","Mítico"][m.lg]}</span>` : "";
+  return `<div class="card ${lk?'locked':''}">
+    <div class="cost">${m.cost} pt</div>
+    <div class="top">
+      <div class="ball" style="background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${m.fin.slice(0,2).toUpperCase()}</div>
+      <div><div class="nm">${m.fin}${leg}</div>
+        <div class="evo">${m.name !== m.fin ? "começa como " + m.name + " · " : ""}total ${m.bst}</div>
+        <div class="types">${m.ty.map(tyB).join("")}</div></div>
+    </div>
+    <div class="kv">
+      <span class="k">Nature</span><span>${nature(m)}</span>
+      <span class="k">Habilidade</span><span>${abilityLine(m, ctx)}</span>
+      <span class="k">IVs</span><span>${m.iv.join(" / ")}</span>
+      ${forms.length ? `<span class="k">Forma</span><span>${forms.map(f => L.formText(m, f)).join("<br>")}</span>` : ""}
+    </div>
+    <div class="moves">${mv.map(x=>`<div class="mv" style="background:${TY[x.t][1]}"><span>${x.name}${x.egg?" ★":""}</span><small>${x.c==="X"?"status":x.p}</small></div>`).join("")}</div>
+    ${tms.length ? `<div class="tms"><span class="muted">TMs se aparecerem:</span> ${tms.map(x=>`<span class="tmn" style="background:${TY[x.t][1]}">${x.name}</span> <span class="muted">${x.tierNome}, ${x.why}</span>`).join("<br>")}</div>` : ""}
+    ${note ? `<div class="why">${note}</div>` : ""}
+    ${statBars(m.st)}
+    <div class="acts"><button class="btn" data-lock="${m.k}">${lk?"Destravar":"Travar"}</button><button class="btn" data-re="${m.k}">Trocar</button></div>
+  </div>`;
+}
+function renderTeam(){
+  const r = current; const budget = +$("budget").value;
+  let info = r.info;
+  if (theme === "mono" && r.info) info = "Monotipo de " + TY[r.info][0];
+  if (!r.team.length) info = info || "Nada coube com esse orçamento.";
+  $("info").textContent = info || L.THEMES[theme];
+  $("pts").textContent = `${r.cost}/${budget} pts`;
+  $("team").innerHTML = r.team.map(m => cardHTML(m, r.ctx, r.notes && r.notes[m.k])).join("");
+  const w = L.teamWeak(r.team);
+  $("weak").innerHTML = r.team.length ? (w.length ? `<b>Cuidado com:</b> golpes que acertam vários do time ao mesmo tempo<div class="types">${w.map(x=>tyB(x.t)+`<span class="muted" style="font-size:12px;margin-right:6px">×${x.weak}</span>`).join("")}</div>` : "Nenhuma fraqueza repetida no time.") : "";
+  $("team").querySelectorAll("[data-lock]").forEach(b => b.onclick = () => { const k = b.dataset.lock; locked.has(k) ? locked.delete(k) : locked.add(k); renderTeam(); });
+  $("team").querySelectorAll("[data-re]").forEach(b => b.onclick = () => reroll(b.dataset.re));
+}
+$("copy").onclick = async () => {
+  if (!current) return;
+  const t = current.team.map(m => {
+    const tm = L.suggestTMs(m, GAME, current.ctx), fs = L.bigForms(m), nt = current.notes && current.notes[m.k];
+    return `${m.fin} (${m.cost} pt) · ${L.NATS[m.nat]} · ${m.abil.map(ab).join("/")}${m.passive?" · passiva "+ab(m.passive):""}\n   ${L.suggestMoves(m, GAME, current.ctx).map(x=>x.name).join(", ")}`
+      + (tm.length ? `\n   TMs se aparecerem: ${tm.map(x=>x.name).join(", ")}` : "")
+      + (fs.length ? `\n   ${fs.map(f=>L.formText(m,f)).join(", ")}` : "")
+      + (nt ? `\n   ${nt}` : "");
+  }).join("\n");
+  try { await navigator.clipboard.writeText(L.THEMES[theme] + (current.info ? "\n" + current.info : "") + "\n" + t); toast("Time copiado"); } catch(e) { toast("Não deu pra copiar aqui"); }
+};
+
+// ---------- lendários ----------
+function rowHTML(m, i, extra){
+  return `<div class="li">${i!=null?`<div class="rank">${i+1}</div>`:""}
+    <div class="ball" style="width:34px;height:34px;font-size:9px;background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${m.fin.slice(0,2).toUpperCase()}</div>
+    <div class="grow"><div class="nm">${m.fin} <span class="muted" style="font-weight:400;font-size:12px">${m.cost} pt · total ${m.bst}</span></div>
+    <div class="meta">${L.NATS[m.nat]} · ${m.abil.map(ab).join("/")}${m.egg.length?" · ★ "+m.egg.map(i=>L.title(GAME.moves[i][0])).join(", "):""}${m.passive?" · passiva "+ab(m.passive):""} · IVs ${m.ivSum}</div></div>
+    ${extra||""}</div>`;
+}
+function renderLegs(){
+  const legs = owned.filter(m => m.lg).sort((a,b) => b.score - a.score);
+  $("legs").innerHTML = legs.map((m,i) => rowHTML(m, i, `<button class="btn" data-use="${m.k}">Usar</button>`)).join("") || `<p class="info">Nenhum lendário no save.</p>`;
+  $("legs").querySelectorAll("[data-use]").forEach(b => b.onclick = () => useIn(b.dataset.use));
+}
+function useIn(k){
+  locked = new Set([k]);
+  theme = owned.find(m => m.k === k)?.lg ? "lenda" : theme;
+  document.querySelectorAll("#themes .chip").forEach(x => x.classList.toggle("on", x.dataset.k === theme));
+  document.querySelector('.tab[data-tab="gen"]').click();
+  gen(); window.scrollTo({top:0,behavior:"smooth"});
+}
+
+// ---------- coleção ----------
+const ft = $("ftype"); ft.innerHTML += L.TYPES.map(t => `<option value="${t}">${TY[t][0]}</option>`).join("");
+function renderCol(){
+  const q = $("q").value.trim().toLowerCase(), t = ft.value, s = $("sort").value;
+  let list = owned.filter(m => (!q || m.name.toLowerCase().includes(q) || m.fin.toLowerCase().includes(q)) && (!t || m.ty.includes(t)));
+  if (s === "score") list.sort((a,b) => b.score - a.score);
+  if (s === "cost") list.sort((a,b) => a.cost - b.cost || b.score - a.score);
+  if (s === "value") list.sort((a,b) => (b.score/(b.cost+1)) - (a.score/(a.cost+1)));
+  $("col").innerHTML = list.slice(0, 150).map(m => rowHTML(m, null, `<button class="btn" data-use="${m.k}">Travar</button>`)).join("") + (list.length > 150 ? `<p class="info">Mostrando 150 de ${list.length}. Use a busca pra achar os outros.</p>` : "");
+  $("col").querySelectorAll("[data-use]").forEach(b => b.onclick = () => { locked.add(b.dataset.use); document.querySelector('.tab[data-tab="gen"]').click(); gen(); toast("Travado no time"); });
+}
+$("q").oninput = renderCol; ft.onchange = renderCol; $("sort").onchange = renderCol;
+
+function renderAll(){ fillMono(); renderLegs(); renderCol(); }
+status(); renderAll(); gen();
+</script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+.cache/
+fixtures/*.prsv
+fixtures/*.json.raw
+dist/
+__pycache__/
+node_modules/
