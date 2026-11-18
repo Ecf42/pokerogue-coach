@@ -74,5 +74,14 @@ ok(Buffer.byteLength(JSON.stringify(r2)) < 4000, "resposta da rota pequena");
 ok(T.rota_biomas.run({ de: "Cidade", alvo: "Flutter Mane" }).melhores_biomas[0].bioma.startsWith("Fim do Clássico"), "Pokémon do END");
 ok(T.rota_biomas.run({ de: "Cidade", alvo: "???" }).chance_de_chegar === "100%", "alvo END");
 
+// caça com Map: caminho e escolha da próxima troca
+const dr = T.rota_biomas.run({ de: "Mar", alvo: "Dragonite", wave: 102, tem_map: true });
+ok(dr.rumo === "Terras Arrasadas" && dr.melhores_biomas[0].caminho.startsWith("Mar > ") && dr.melhores_biomas[0].caminho.includes("Terras Arrasadas (chega na wave 151)"), `caminho do Dragonite: ${dr.melhores_biomas[0].caminho}`);
+ok(dr.proxima_troca[0].startsWith("Fundo do Mar") && dr.proxima_troca.length === 2 && dr.como_usar, "próxima troca em ordem de preferência");
+const dp = dr.melhores_biomas[0].caminho.replace(/ \(.*/, "").split(" > ").map(n => biomes.biomes.find(b => b.nome === n).k);
+for (let i = 1; i < dp.length; i++) ok(biomes.biomes.find(b => b.k === dp[i - 1]).links.some(l => l[0] === dp[i]), "caminho da caça só usa links existentes");
+ok(T.rota_biomas.run({ de: "Terras Arrasadas", alvo: "Dragonite", wave: 102 }).melhores_biomas[0].caminho === "você já está aqui", "já no bioma");
+ok(T.rota_biomas.run({ de: "Cidade", alvo: "Caverna de Gelo", tem_map: true }).caminho_ideal.endsWith("(chega na wave 51)"), "wave de chegada na rota entre biomas");
+
 console.log(fail ? `${fail} falhas` : "tudo ok");
 process.exit(fail ? 1 : 0);

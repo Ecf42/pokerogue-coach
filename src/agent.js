@@ -295,6 +295,9 @@
     if (!from) throw new Error("Bioma de partida não encontrado: " + i.de);
     const wave = Math.max(1, Number(i.wave) || 1), map = !!i.tem_map, steps = L.switchesLeft(wave);
     const bname = k => (ctx.biomes.biomes.find(b => b.k === k) || {}).nome || k;
+    // a troca acontece depois das waves múltiplas de 10; com n trocas, chega na wave seguinte à n-ésima
+    const arrive = path => Math.ceil(wave / 10) * 10 + 10 * (path.length - 2) + 1;
+    const pathText = path => path.map(bname).join(" > ") + ` (chega na wave ${arrive(path)})`;
     const base = { de: from.nome, wave, trocas_restantes: steps, map: map ? "sim" : "não" };
     const tb = findBiome(ctx, i.alvo);
     if (tb && tb.k === "END") return { ...base, alvo: END_NOME, chance_de_chegar: "100%", observacao: "No Clássico o jogo leva para lá sozinho depois da wave 190; não tem como chegar antes." };
@@ -305,7 +308,7 @@
         ...base, alvo: tb.nome, chance_de_chegar: pct(r.chance) + "%",
         minimo_de_trocas: r.min == null ? "inalcançável" : r.min,
         proxima_troca: r.next.map(x => `${x.nome}: aparece ${pct(x.aparece)}%, por ele ${pct(x.chance)}%`),
-        caminho_ideal: r.path.map(bname).join(" > "),
+        caminho_ideal: r.path.length > 1 ? pathText(r.path) : r.path.map(bname).join(" > "),
         ...(map ? {} : { observacao: "Sem Map o jogo sorteia entre os links que aparecerem. Com Map seria " + pct(L.planRoute(ctx.biomes, from.k, tb.k, steps, true).chance) + "%." }),
       };
     }
@@ -313,15 +316,30 @@
     if (!sp) throw new Error("Não achei bioma nem Pokémon com esse nome: " + i.alvo);
     const h = L.huntSpecies(ctx.biomes, ctx.dex.prevo, sp[1], from.k, steps, map).slice(0, 5);
     if (!h.length) return { ...base, alvo: pname(sp[1]), resultado: "Não aparece nos pools de nenhum bioma (pode vir só de ovos, eventos ou encontros especiais)." };
-    return {
+    // caminho até cada bioma; no melhor alcançável, também a escolha da próxima troca (com as alternativas)
+    const plan = x => (x.k === from.k || x.k === "END" || !x.chegar ? null : L.planRoute(ctx.biomes, from.k, x.k, steps, map));
+    const top = h.find(x => x.k !== from.k && x.k !== "END" && x.chegar > 0);
+    const res = {
       ...base, alvo: pname(sp[1]),
-      melhores_biomas: h.map(x => ({
-        bioma: x.k === "END" ? END_NOME : x.nome, aparece_como: x.formas.map(pname).join(", "),
-        por_batalha: pct(x.porBatalha) + "%", como_chefe: pct(x.chefe) + "%",
-        numa_passagem: pct(x.passagem) + "%", chance_de_chegar: pct(x.chegar) + "%",
-      })),
+      melhores_biomas: h.map(x => {
+        const r = plan(x);
+        return {
+          bioma: x.k === "END" ? END_NOME : x.nome, aparece_como: x.formas.map(pname).join(", "),
+          por_batalha: pct(x.porBatalha) + "%", como_chefe: pct(x.chefe) + "%",
+          numa_passagem: pct(x.passagem) + "%", chance_de_chegar: pct(x.chegar) + "%",
+          caminho: x.k === from.k ? "você já está aqui" : x.k === "END" ? "o jogo leva depois da wave 190" : r && r.path.length > 1 ? pathText(r.path) : "inalcançável a tempo",
+        };
+      }),
       observacao: "Passagem = 10 waves no bioma. Aproximação: não conta sorte, eventos nem o reroll de lendários antes da wave 55.",
     };
+    if (top) {
+      const r = plan(top);
+      res.rumo = top.nome;
+      res.proxima_troca = r.next.filter(x => x.chance > 0).sort((a, b) => b.chance - a.chance).slice(0, 4)
+        .map(x => `${x.nome}: aparece ${pct(x.aparece)}%, por ele ${pct(x.chance)}% de chegar em ${top.nome}`);
+      if (map) res.como_usar = "Em cada troca, escolha o primeiro desta lista que aparecer no Map. O caminho mostrado é o ideal, quando a melhor opção aparece; depois de cada troca, calcule de novo a partir do bioma novo.";
+    }
+    return res;
   }
 
   // ---------------------------------------------------------------- arquivos do jogo

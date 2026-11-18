@@ -535,7 +535,9 @@ function routeHTML(r){
     ${r.proxima_troca.length ? `<div class="info">Na próxima troca:</div><ul style="margin:4px 0;padding-left:18px">${r.proxima_troca.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
     ${r.observacao ? `<p class="note" style="margin-top:6px">${esc(r.observacao)}</p>` : ""}</div>`;
   if (r.resultado) return `<div class="card"><div class="nm">${esc(r.alvo)}</div>${head}<p class="info">${esc(r.resultado)}</p></div>`;
-  return `<div class="card"><div class="nm">${esc(r.alvo)}</div>${head}<div class="list">${r.melhores_biomas.map(b => `<div class="li"><div class="grow"><div class="nm">${esc(b.bioma)} <span class="muted" style="font-weight:400;font-size:12px">como ${esc(b.aparece_como)}</span></div>
+  const rumo = r.rumo ? `<div class="why" style="margin:8px 0">Rumo a <b>${esc(r.rumo)}</b>. ${r.proxima_troca.length ? `Na próxima troca, ${r.map === "sim" ? "escolha nesta ordem" : "as melhores saídas são"}:<ol style="margin:4px 0 0;padding-left:18px">${r.proxima_troca.map(x => `<li>${esc(x)}</li>`).join("")}</ol>` : ""}${r.como_usar ? `<div class="muted" style="margin-top:4px">${esc(r.como_usar)}</div>` : ""}</div>` : "";
+  return `<div class="card"><div class="nm">${esc(r.alvo)}</div>${head}${rumo}<div class="list">${r.melhores_biomas.map(b => `<div class="li"><div class="grow"><div class="nm">${esc(b.bioma)} <span class="muted" style="font-weight:400;font-size:12px">como ${esc(b.aparece_como)}</span></div>
+    <div class="info" style="font-size:12px">Caminho: ${esc(b.caminho)}</div>
     <div class="info" style="font-size:12px">Numa passagem ${b.numa_passagem} · chegar lá ${b.chance_de_chegar} · por batalha ${b.por_batalha} · chefe ${b.como_chefe}</div></div></div>`).join("")}</div>
     <p class="note" style="margin-top:8px">${esc(r.observacao)}</p></div>`;
 }
