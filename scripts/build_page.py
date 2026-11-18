@@ -12,13 +12,15 @@ r = lambda p: open(os.path.join(ROOT, p), encoding="utf8").read()
 parts = {
     "GAME": r("data/gamedata.json"),
     "BIOMES": r("data/biomes.json"),
+    "DEX": r("data/dex.json"),
     "UNLOCKS": open(a.unlocks, encoding="utf8").read(),
     "LABEL": a.label,
     "LOGIC": r("src/logic.js"),
+    "AGENT": r("src/agent.js"),
 }
 # uma passada só: o conteúdo inserido nunca é reprocessado (descrições e código podem ter qualquer texto)
-html = re.sub(r"__(GAME|BIOMES|UNLOCKS|LABEL|LOGIC)__", lambda m: parts[m.group(1)], r("src/template.html"))
-assert "</script" not in parts["GAME"] + parts["BIOMES"], "dados com </script> quebrariam a página"
+html = re.sub(r"__(GAME|BIOMES|DEX|UNLOCKS|LABEL|LOGIC|AGENT)__", lambda m: parts[m.group(1)], r("src/template.html"))
+assert "</script" not in parts["GAME"] + parts["BIOMES"] + parts["DEX"], "dados com </script> quebrariam a página"
 os.makedirs(os.path.join(ROOT, "dist"), exist_ok=True)
 out = os.path.join(ROOT, "dist", "index.html")
 open(out, "w", encoding="utf8").write(html)

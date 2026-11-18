@@ -16,24 +16,26 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 * `fetch` para outros sites é bloqueado. Imagens remotas não carregam (só `data:` e `blob:`). Por isso não tem sprite: usamos bolinhas com as cores dos tipos.
 * `alert`, `confirm`, `prompt`, `window.print` e downloads iniciados pela página não funcionam. Diálogos têm que ser da própria página; para exportar, botão de Copiar.
 * `localStorage` pode falhar: sempre com try/catch, e só para conveniência (o save carregado fica lá).
-* Tamanho atual ~398 KB (gamedata ~310 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
+* Tamanho atual ~525 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
 
 ## Estrutura
 
 ```
-scripts/extract_game_data.py   gera data/gamedata.json e data/biomes.json a partir do código do PokéRogue
+scripts/extract_game_data.py   gera data/gamedata.json, data/biomes.json e data/dex.json a partir do código do PokéRogue
 scripts/decrypt_save.py        .prsv -> JSON
 scripts/save_unlocks.py        data.json -> desbloqueios compactos (fixtures/mysave_unlocks.json)
 scripts/build_page.py          src/ + data/ + fixtures/ -> dist/index.html
-src/logic.js                   lógica (roda no navegador e no node)
-src/template.html              UI (placeholders __GAME__, __BIOMES__, __UNLOCKS__, __LABEL__, __LOGIC__)
+src/logic.js                   lógica do gerador (roda no navegador e no node)
+src/agent.js                   agente: ferramentas, instruções, leitura de sessão e histórico (navegador e node)
+src/template.html              UI (placeholders __GAME__, __BIOMES__, __DEX__, __UNLOCKS__, __LABEL__, __LOGIC__, __AGENT__)
 tests/test_logic.js            node tests/test_logic.js (gerador de times)
 tests/test_data.js             node tests/test_data.js (dados extraídos e acessores tmsOf, candyCosts, biomeOdds, nextBiomeOdds)
+tests/test_agent.js            node tests/test_agent.js (ferramentas do agente, sessão e histórico sintéticos)
 docs/sample-capability.md      API para chamar o Claude de dentro da página
 fixtures/                      saves do Eric (os .prsv ficam fora do git)
 ```
 
-Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `python scripts/build_page.py`.
+Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `python scripts/build_page.py`.
 
 ## Fonte dos dados
 
@@ -99,9 +101,13 @@ Bits:
 * `src/logic.js` não pode depender do DOM: tem que rodar no node para os testes.
 * Toda mudança na lógica ganha teste em `tests/`. Antes de entregar, rodar os testes e fazer o build. Tirar print do `dist/index.html` em 420px de largura (o Eric usa muito no celular) e conferir. Sem Playwright, dá com o Edge headless (`msedge --headless=new --screenshot --window-size=420,3000`), mas ele não desce de ~490px de viewport: colocar a página num `<iframe>` de 420px e fotografar o wrapper.
 
-## Estado atual (v2)
+## Estado atual (v3)
 
 Abas Gerar, Lendários e Coleção. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
+
+Aba Coach (v3): chat com o Claude via `sample`, modos Conversa, Carry, Conselheiro da run e Raio X das runs. Ferramentas da página (`src/agent.js`): `buscar_iniciais`, `detalhes`, `gerar_time` (o time aparece na aba Gerar), `analisar_time`, `habilidade`, `bioma`. "Carregar run" aceita a sessão exportada ou o histórico de runs; a página resume (`summarizeSession`, `summarizeHistory`) e só o resumo vai para o Claude. "Anexar print" manda imagens. Sem `window.claude` (fora do claude.ai) a aba mostra um aviso e o resto funciona.
+
+**Publicar com `capabilities: {sample: {images: true}}`** (o Anexar print precisa de `images`).
 
 Score de um inicial: `BST + 8*encaixe da nature + 40*IVs/186 + 8*egg moves + 30 se passiva liberada`.
 
@@ -124,7 +130,8 @@ Testes em `tests/test_logic.js`. O Desafio por enquanto sorteia uma regra de `CH
 * **Mega / Gigantamax**: só quem tem forma por item.
 * **Desafios**: o agente inventa uma regra e monta o time dentro dela.
 
-### Fase 3: agente (o principal)
+### Fase 3: agente (feita em 18/11/2026)
+Falta testar com o Claude de verdade no claude.ai (aqui foi testado com um `window.claude` falso no Edge headless) e com arquivos reais de sessão e histórico (os testes usam exemplos sintéticos no formato de `src/@types/save-data.ts`). `rota_biomas` e `alvos_de_farm` ficam para as Fases 4 e 5.
 Chat dentro da página usando `sample` com ferramentas da própria página. Ferramentas sugeridas (resultados pequenos):
 * `buscar_iniciais(filtro)`: lista resumida dos desbloqueios que batem com o filtro
 * `detalhes(pokemon)`: status, habilidades, natures e egg moves liberados, golpes possíveis

@@ -67,7 +67,7 @@
     for (const s of game.starters) {
       const u = unlocks[s.id];
       if (!u) continue;
-      const [vr, a, pa, emb, na, iv] = u;
+      const [vr, a, pa, emb, na, iv, candy] = u;
       const abil = [0, 1, 2].filter(i => (a >> i) & 1 && s.ab[i] !== "NONE").map(i => s.ab[i]);
       const uniq = [...new Set(abil)];
       const nats = []; for (let i = 0; i < 25; i++) if ((na >> (i + 1)) & 1) nats.push(i);
@@ -85,7 +85,7 @@
       const names = new Set([...s.mv, ...egg].map(i => game.moves[i][0]));
       out.push({ k: s.k, id: s.id, name: pname(s.k), fin: pname(s.f), finKey: s.f, ty: s.ty, st: s.st, bst, cost: Math.max(0, s.c - vr), base: s.c, lg: s.lg,
         abil: uniq, allAb: s.ab.filter(x => x !== "NONE"), passive, passiveStart, egg, nats, nat: best, natFit: bs, iv, ivSum, role: r, mv: s.mv, score,
-        ch: s.ch, tms: tmsOf(s, game), forms: s.fo || [],
+        ch: s.ch, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
         hasSetup: (r === "P" ? SETUP_P : SETUP_E).some(n => names.has(n)), hasHeal: HEAL.some(n => names.has(n)) });
     }
     // tipos de dano dos golpes sugeridos (sem clima): usado na cobertura ofensiva do tema Equilibrado

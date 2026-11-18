@@ -380,6 +380,40 @@ def main():
               open(bout, "w", encoding="utf8"), separators=(",", ":"), ensure_ascii=False)
     print(f"{len(biomes)} biomas -> {bout}")
 
+    # ---- dex.json: o necessário para ler uma sessão ou o histórico de runs (ids numéricos -> nomes e tipos)
+    def by_id(enum):
+        arr = [None] * (max(v for v in enum.values() if isinstance(v, int)) + 1)
+        for k, v in enum.items():
+            if isinstance(v, int) and v >= 0 and arr[v] is None:
+                arr[v] = k
+        return arr
+    abil_list, abil_idx = [], {}
+    def ai(a):
+        if a not in abil_idx:
+            abil_idx[a] = len(abil_list)
+            abil_list.append(a)
+        return abil_idx[a]
+    ai("NONE")
+    species = []
+    for name, s in S.items():
+        if name not in SP:
+            continue
+        t2 = s["types"][1]
+        # [id, KEY, tipo1, tipo2, hab1, hab2, oculta, total, passiva] (habilidades como índice em `abilities`)
+        species.append([SP[name], name, s["types"][0], "" if t2 == "null" else t2, *[ai(a) for a in s["ab"]], s["bst"], ai(s["passive"] or "NONE")])
+    MV = parse_enum(src + "/enums/move-id.ts", "MoveId")
+    # BiomeId é um objeto `const`, não um enum, e tem buracos (SLUM = 30, END = 50)
+    bt = read(src + "/enums/biome-id.ts")
+    BI = {k: int(v) for k, v in re.findall(r"^\s*(\w+):\s*(\d+),", const_block(bt, "BiomeId"), re.M)}
+    TT = parse_enum(src + "/enums/trainer-type.ts", "TrainerType")
+    FW = parse_enum(src + "/enums/fixed-boss-waves.ts", "ClassicFixedBossWaves")
+    GM = parse_enum(src + "/enums/game-modes.ts", "GameModes")
+    dex = dict(src=game_info, species=sorted(species), abilities=abil_list, moves=by_id(MV), biomes=by_id(BI), gameModes=by_id(GM),
+               trainers=by_id(TT), classicFixed=sorted([[w, k] for k, w in FW.items()]))
+    dout = os.path.join(ROOT, "data", "dex.json")
+    json.dump(dex, open(dout, "w", encoding="utf8"), separators=(",", ":"), ensure_ascii=False)
+    print(f"{len(species)} espécies, {sum(1 for m in dex['moves'] if m)} golpes, {len(dex['trainers'])} treinadores -> {dout}")
+
 
 if __name__ == "__main__":
     main()
