@@ -394,7 +394,7 @@ const ERR = {
   image_rejected: "Não deu para usar esse print. Tente outra imagem (PNG ou JPG).", refused: "O Claude não quis responder isso. Tente perguntar de outro jeito.",
   empty_completion: "Veio uma resposta vazia. Tente pedir algo mais simples.", prompt_too_large: "A conversa ficou grande demais. Comece uma nova conversa.",
   tools_unavailable: "Este app não roda as ferramentas da página. Vou responder sem consultar seus desbloqueios; mande de novo.",
-  images_unavailable: "Este app não aceita imagens aqui. Mande sem o print.",
+  images_unavailable: "Nesta tela o Claude não recebe imagens. Isso costuma acontecer no app do celular ou numa aba antiga: abra o artifact no claude.ai pelo navegador e recarregue a página. Enquanto isso, descreva o time em texto ou use Carregar run.",
 };
 const FATAL = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
 const PROG = {
@@ -475,7 +475,6 @@ async function send(text){
   } catch (e) {
     const code = e && e.code;
     if (code === "tools_unavailable") noTools = true;
-    if (code === "images_unavailable") $("imgBtn").classList.add("hide");
     if (e && e.text && code !== "refused") chat.push({ role: "assistant", content: e.text + (code === "cancelled" ? "\n\n(interrompido)" : "") });
     if (code !== "cancelled") chat.push({ role: "assistant", content: ERR[code] || "Deu um erro de conexão. Tente de novo.", err: true });
     if (FATAL.includes(code)) fatal = true;
@@ -491,6 +490,10 @@ $("send").onclick = () => send($("msg").value);
 $("msg").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("msg").value); } });
 $("stop").onclick = () => { if (ctl) ctl.abort(); };
 $("newChat").onclick = () => { if (busy) return; chat = []; renderChat(); };
+$("imgBtn").addEventListener("click", e => {
+  // sem images em limits() o Claude não recebe o print: avisar em vez de esconder o botão
+  if (sampleLimits && !sampleLimits.images) { e.preventDefault(); toast("Print indisponível nesta tela"); chat.push({ role: "assistant", content: ERR.images_unavailable, err: true }); renderChat(); }
+});
 $("imgFile").addEventListener("change", e => {
   const max = (sampleLimits && sampleLimits.images && sampleLimits.images.maxCount) || 1;
   images = [...images, ...e.target.files].slice(0, max); e.target.value = "";
@@ -517,7 +520,7 @@ $("runFile").addEventListener("change", async e => {
   if (!sample) { $("coachOff").textContent = "O Coach só funciona com a página aberta no claude.ai, publicada com a permissão de usar o Claude (capability sample). O resto da página funciona normalmente."; return; }
   sampleLimits = await sample.limits().catch(() => null);
   $("coachOff").classList.add("hide"); $("coachOn").classList.remove("hide");
-  if (!(sampleLimits && sampleLimits.images)) $("imgBtn").classList.add("hide");
+  if (sampleLimits && sampleLimits.images && sampleLimits.images.mediaTypes) $("imgFile").accept = sampleLimits.images.mediaTypes.join(",");
   renderMode(); renderAtts();
 })();
 
