@@ -16,7 +16,7 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 * `fetch` para outros sites é bloqueado. Imagens remotas não carregam (só `data:` e `blob:`). Por isso não tem sprite: usamos bolinhas com as cores dos tipos.
 * `alert`, `confirm`, `prompt`, `window.print` e downloads iniciados pela página não funcionam. Diálogos têm que ser da própria página; para exportar, botão de Copiar.
 * `localStorage` pode falhar: sempre com try/catch, e só para conveniência (o save carregado fica lá).
-* Tamanho atual ~560 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
+* Tamanho atual ~580 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
 
 ## Estrutura
 
@@ -109,9 +109,11 @@ Abas Gerar, Lendas, Coleção, Farm, Rotas e Coach. Temas: Lendário + ruins, Eq
 
 Aba Coach (v3): chat com o Claude via `sample`, modos Conversa, Carry, Conselheiro da run e Raio X das runs. Ferramentas da página (`src/agent.js`): `buscar_iniciais`, `detalhes`, `gerar_time` (o time aparece na aba Gerar), `analisar_time`, `habilidade`, `bioma`. "Carregar run" aceita a sessão exportada ou o histórico de runs; a página resume (`summarizeSession`, `summarizeHistory`) e só o resumo vai para o Claude. "Anexar print" manda imagens. Sem `window.claude` (fora do claude.ai) a aba mostra um aviso e o resto funciona.
 
+Aba Farm (v8): busca por Pokémon e ficha (`L.starterSheet`, `L.sheetBuy`): doces, passiva, reduções, ovo com chance por ovo e acumulada, habilidades, egg moves, grade de natures 5x5 e IVs, com simulador de compras que não mexe no save. Custo com redução segue `getSpeciesStarterValue` (`L.starterValue`: quem custa 1 cai para 0,5 e 0,25); o knapsack trabalha em quartos de ponto.
+
 Aba Farm (v5): `L.farmTargets` lista passivas e reduções de custo (doces que faltam), ovos da mesma espécie (chance por ovo de egg move novo e de habilidade oculta, regras de `rates.ts`: raro 1/x com x = 12, 8, 6, 4 pelo `et` tier de ovo do inicial, oculta 1/8) e natures que faltam (botão Onde caçar abre a Rotas). Prioridade = ganho em score x força relativa / esforço. O agente usa a mesma lista pela ferramenta `alvos_de_farm`.
 
-Aba Rotas (v4): de um bioma até outro bioma ou até um Pokémon, pela wave e com ou sem Map (`A.routeAnswer`, a mesma resposta da ferramenta `rota_biomas` do agente).
+Aba Rotas (v4, caminho e wave de chegada na v7): de um bioma até outro bioma ou até um Pokémon, pela wave e com ou sem Map; na caça mostra o caminho até cada bioma e a ordem de escolha na próxima troca (`A.routeAnswer`, a mesma resposta da ferramenta `rota_biomas` do agente).
 
 **Publicar com `capabilities: {sample: {images: true}}`** (o Anexar print precisa de `images`).
 

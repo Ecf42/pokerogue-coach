@@ -84,6 +84,31 @@
   .modebox .row{margin-top:8px}
   .att{display:inline-flex;gap:6px;align-items:center;font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin:6px 6px 0 0}
   .att b{cursor:pointer;color:var(--muted)}
+  .overlay{position:fixed;inset:0;background:rgba(5,7,12,.72);z-index:20;overflow-y:auto;padding:16px 10px}
+  .sheet{max-width:560px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;position:relative}
+  .sheet h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
+  .sheet .x{position:absolute;top:10px;right:10px}
+  .candy{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-top:10px}
+  .candy .big{font-family:"Press Start 2P",monospace;font-size:12px;color:var(--acc2);margin-left:auto}
+  .candy input{width:70px}
+  .step{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+  .step:first-child{border-top:0}
+  .step .grow{flex:1;min-width:0}
+  .pbar{height:7px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:5px}
+  .pbar i{display:block;height:100%;background:var(--acc2);border-radius:4px}
+  .pbar i.full{background:var(--good)}
+  .btn:disabled{opacity:.45;cursor:default}
+  .ab{display:inline-block;border-radius:8px;padding:5px 9px;margin:0 6px 6px 0;font-size:12px;border:1px solid var(--line);background:var(--panel2)}
+  .ab.off{opacity:.5;border-style:dashed}
+  .ab small{display:block;color:var(--muted);font-size:10px}
+  .natgrid{display:grid;grid-template-columns:38px repeat(5,minmax(0,1fr));gap:3px;font-size:10.5px}
+  .natgrid .h{color:var(--muted);text-align:center;align-self:center;font-size:10px}
+  .nat{border-radius:6px;padding:5px 1px;text-align:center;background:var(--panel2);border:1px solid var(--line);color:var(--muted);cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nat.on{background:#123a2a;border-color:#2f7a55;color:var(--ink)}
+  .nat.best{background:var(--acc2);border-color:var(--acc2);color:#2a2000;font-weight:700}
+  .nat.vale{border-color:var(--acc);border-style:dashed;color:var(--acc)}
+  .nat.sel{outline:2px solid var(--ink)}
+  .li.click{cursor:pointer}.li.click:hover{border-color:var(--acc)}
   .tms .tmn{display:inline-block;color:#fff;font-weight:600;border-radius:5px;padding:0 6px;text-shadow:0 1px 1px rgba(0,0,0,.45)}
 </style>
 </head>
@@ -140,8 +165,10 @@
 
   <section id="tab-farm" class="hide">
     <p class="info">O que mais vale farmar com o seu save: passivas e reduções de custo perto de liberar, ovos da mesma espécie que podem liberar egg move ou habilidade oculta, e natures que faltam. Os mais fortes e os mais perto de liberar vêm primeiro.</p>
+    <div class="row" style="margin:8px 0 2px"><input type="text" id="farmQ" list="farmNames" placeholder="Buscar Pokémon para abrir a ficha" style="flex:1;min-width:140px"><datalist id="farmNames"></datalist></div>
     <div class="chips" id="farmChips"></div>
     <div class="list" id="farmList"></div>
+    <p class="note">Toque num Pokémon para abrir a ficha: doces, passiva, redução de custo, ovos, habilidades, egg moves e natures. Dá para simular as compras com os doces antes de gastar no jogo.</p>
   </section>
 
   <section id="tab-rota" class="hide">
@@ -176,6 +203,7 @@
 
 </div>
 <div class="toast" id="toast"></div>
+<div class="overlay hide" id="sheetBg"><div class="sheet" id="sheet"></div></div>
 
 <script>
 const GAME = __GAME__;
@@ -203,6 +231,7 @@ try { const s = localStorage.getItem("prl_unlocks"); if (s) { const o = JSON.par
 let owned = L.buildOwned(GAME, unlocks);
 let theme = "lenda", current = null, locked = new Set();
 
+const pt = c => String(Math.round(c * 100) / 100).replace(".", ",");
 function toast(t){ const el=$("toast"); el.textContent=t; el.classList.add("on"); setTimeout(()=>el.classList.remove("on"),1600); }
 function status(){ $("saveStatus").innerHTML = `Save: <b>${label}</b> · ${owned.length} iniciais · ${owned.filter(m=>m.lg).length} lendários/míticos`; }
 
@@ -290,7 +319,7 @@ function cardHTML(m, ctx, note){
   const lk = locked.has(m.k);
   const leg = m.lg ? `<span class="tag">${["","Lendário","Sublendário","Mítico"][m.lg]}</span>` : "";
   return `<div class="card ${lk?'locked':''}">
-    <div class="cost">${m.cost} pt</div>
+    <div class="cost">${pt(m.cost)} pt</div>
     <div class="top">
       <div class="ball" style="background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${m.fin.slice(0,2).toUpperCase()}</div>
       <div><div class="nm">${m.fin}${leg}</div>
@@ -316,7 +345,7 @@ function renderTeam(){
   if (theme === "mono" && r.info) info = "Monotipo de " + TY[r.info][0];
   if (!r.team.length) info = info || "Nada coube com esse orçamento.";
   $("info").textContent = info || L.THEMES[theme];
-  $("pts").textContent = `${r.cost}/${budget} pts`;
+  $("pts").textContent = `${pt(r.cost)}/${budget} pts`;
   $("team").innerHTML = r.team.map(m => cardHTML(m, r.ctx, r.notes && r.notes[m.k])).join("");
   const w = L.teamWeak(r.team);
   $("weak").innerHTML = r.team.length ? (w.length ? `<b>Cuidado com:</b> golpes que acertam vários do time ao mesmo tempo<div class="types">${w.map(x=>tyB(x.t)+`<span class="muted" style="font-size:12px;margin-right:6px">×${x.weak}</span>`).join("")}</div>` : "Nenhuma fraqueza repetida no time.") : "";
@@ -327,7 +356,7 @@ $("copy").onclick = async () => {
   if (!current) return;
   const t = current.team.map(m => {
     const tm = L.suggestTMs(m, GAME, current.ctx), fs = L.bigForms(m), nt = current.notes && current.notes[m.k];
-    return `${m.fin} (${m.cost} pt) · ${L.NATS[m.nat]} · ${m.abil.map(ab).join("/")}${m.passive?" · passiva "+ab(m.passive):""}\n   ${L.suggestMoves(m, GAME, current.ctx).map(x=>x.name).join(", ")}`
+    return `${m.fin} (${pt(m.cost)} pt) · ${L.NATS[m.nat]} · ${m.abil.map(ab).join("/")}${m.passive?" · passiva "+ab(m.passive):""}\n   ${L.suggestMoves(m, GAME, current.ctx).map(x=>x.name).join(", ")}`
       + (tm.length ? `\n   TMs se aparecerem: ${tm.map(x=>x.name).join(", ")}` : "")
       + (fs.length ? `\n   ${fs.map(f=>L.formText(m,f)).join(", ")}` : "")
       + (nt ? `\n   ${nt}` : "");
@@ -339,7 +368,7 @@ $("copy").onclick = async () => {
 function rowHTML(m, i, extra){
   return `<div class="li">${i!=null?`<div class="rank">${i+1}</div>`:""}
     <div class="ball" style="width:34px;height:34px;font-size:9px;background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${m.fin.slice(0,2).toUpperCase()}</div>
-    <div class="grow"><div class="nm">${m.fin} <span class="muted" style="font-weight:400;font-size:12px">${m.cost} pt · total ${m.bst}</span></div>
+    <div class="grow"><div class="nm">${m.fin} <span class="muted" style="font-weight:400;font-size:12px">${pt(m.cost)} pt · total ${m.bst}</span></div>
     <div class="meta">${L.NATS[m.nat]} · ${m.abil.map(ab).join("/")}${m.egg.length?" · ★ "+m.egg.map(i=>L.title(GAME.moves[i][0])).join(", "):""}${m.passive?" · passiva "+ab(m.passive):""} · IVs ${m.ivSum}</div></div>
     ${extra||""}</div>`;
 }
@@ -549,21 +578,111 @@ $("rGo").onclick = () => {
 // ---------- farm (Fase 5) ----------
 const FARM_TABS = { tudo: "Tudo", prontos: "Prontos agora", passiva: "Passivas", custo: "Custo", ovo: "Ovos", nature: "Natures" };
 let farmTab = "tudo";
+const nrm = t => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const ballHTML = (m, px) => `<div class="ball" style="width:${px}px;height:${px}px;font-size:${px > 40 ? 11 : 9}px;background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${esc(m.fin.slice(0,2).toUpperCase())}</div>`;
+function matchOwned(q){
+  const n = nrm(q); if (!n) return [];
+  const exact = m => nrm(m.fin) === n || nrm(m.name) === n;
+  return owned.filter(m => nrm(m.fin).includes(n) || nrm(m.name).includes(n)).sort((a, b) => exact(b) - exact(a) || b.score - a.score);
+}
 function renderFarm(){
+  $("farmNames").innerHTML = owned.map(m => `<option value="${esc(m.fin)}">`).join("");
   $("farmChips").innerHTML = Object.entries(FARM_TABS).map(([k, n]) => `<div class="chip${k === farmTab ? " on" : ""}" data-f="${k}">${n}</div>`).join("");
   $("farmChips").querySelectorAll("[data-f]").forEach(c => c.onclick = () => { farmTab = c.dataset.f; renderFarm(); });
   const ctx = A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label });
-  const list = A.farmList(ctx, farmTab);
-  $("farmList").innerHTML = list.slice(0, 60).map(x => {
+  const q = $("farmQ").value.trim(), hits = matchOwned(q), hk = new Set(hits.map(m => m.k));
+  let list = A.farmList(ctx, farmTab);
+  if (q) list = list.filter(x => hk.has(x.k));
+  // na busca, os Pokémon achados vêm primeiro, mesmo os que não têm nada para farmar
+  const top = hits.slice(0, 4).map(m => `<div class="li click" data-sheet="${m.k}">${ballHTML(m, 34)}
+      <div class="grow"><div class="nm">${esc(m.fin)} <span class="muted" style="font-weight:400;font-size:12px">${pt(m.cost)} pt · ${m.candy} doces</span></div>
+      <div class="info" style="font-size:12px">Abrir ficha</div></div><span class="muted">›</span></div>`).join("");
+  const rows = list.slice(0, 60).map(x => {
     const m = owned.find(o => o.k === x.k), t = A.farmText(x);
     const btn = x.tipo === "nature" ? `<button class="btn" data-hunt="${esc(x.inicial)}">Onde caçar</button>` : (x.falta === 0 ? `<span class="tag">pronto</span>` : "");
-    return `<div class="li"><div class="ball" style="width:34px;height:34px;font-size:9px;background:linear-gradient(135deg,${TY[m.ty[0]][1]},${TY[m.ty[1]||m.ty[0]][1]})">${esc(m.fin.slice(0,2).toUpperCase())}</div>
+    return `<div class="li click" data-sheet="${m.k}">${ballHTML(m, 34)}
       <div class="grow"><div class="nm">${esc(x.pokemon)} <span class="muted" style="font-weight:400;font-size:12px">${esc(t.titulo)}</span></div>
       <div class="info" style="font-size:12px;white-space:normal">${esc(t.detalhe)}</div></div>${btn}</div>`;
-  }).join("") + (list.length > 60 ? `<p class="info">Mostrando 60 de ${list.length}.</p>` : "") || `<p class="info">Nada nessa categoria.</p>`;
-  $("farmList").querySelectorAll("[data-hunt]").forEach(b => b.onclick = () => {
-    $("rTo").value = b.dataset.hunt; document.querySelector('.tab[data-tab="rota"]').click(); $("rGo").click();
-  });
+  }).join("") + (list.length > 60 ? `<p class="info">Mostrando 60 de ${list.length}.</p>` : "");
+  $("farmList").innerHTML = top + rows || `<p class="info">${q ? "Nenhum Pokémon seu com esse nome." : "Nada nessa categoria."}</p>`;
+  $("farmList").querySelectorAll("[data-hunt]").forEach(b => b.onclick = ev => { ev.stopPropagation(); hunt(b.dataset.hunt); });
+  $("farmList").querySelectorAll("[data-sheet]").forEach(r => r.onclick = () => openSheet(r.dataset.sheet));
+}
+function hunt(name){ closeSheet(); $("rTo").value = name; document.querySelector('.tab[data-tab="rota"]').click(); $("rGo").click(); }
+$("farmQ").addEventListener("input", () => {
+  renderFarm();
+  // escolher um nome na lista de sugestões abre a ficha direto
+  const v = $("farmQ").value, m = owned.find(o => o.fin === v);
+  if (m) openSheet(m.k);
+});
+$("farmQ").addEventListener("keydown", e => { if (e.key === "Enter") { const h = matchOwned($("farmQ").value)[0]; if (h) openSheet(h.k); } });
+
+// ---------- ficha do Pokémon ----------
+let sheetK = null, sim = {}, natSel = null;
+function openSheet(k){ sheetK = k; sim = {}; natSel = null; renderSheet(); $("sheetBg").classList.remove("hide"); document.body.style.overflow = "hidden"; $("sheetBg").scrollTop = 0; }
+function closeSheet(){ sheetK = null; $("sheetBg").classList.add("hide"); document.body.style.overflow = ""; }
+$("sheetBg").addEventListener("click", e => { if (e.target === $("sheetBg")) closeSheet(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && sheetK) closeSheet(); });
+const pctTxt = p => (Math.round(p * 1000) / 10).toString().replace(".", ",") + "%";
+function renderSheet(){
+  const m = owned.find(o => o.k === sheetK); if (!m) return closeSheet();
+  const sh = L.starterSheet(m, GAME, sim), mudou = Object.keys(sim).length > 0;
+  const faltaMove = sh.eggMoves.some(e => !e.liberado);
+  const leg = m.lg ? `<span class="tag">${["","Lendário","Sublendário","Mítico"][m.lg]}</span>` : "";
+  const stepHTML = p => {
+    let t, sub = "";
+    if (p.tipo === "passiva") { t = `Passiva ${ab(p.passiva)}`; if (p.feito) sub = "Liberada"; }
+    else if (p.tipo === "custo") { t = p.para == null ? `Custo ${pt(p.de)} pt` : `Custo ${pt(p.de)} → ${pt(p.para)} pt`; sub = p.feito ? "Reduções no máximo" : `Redução ${p.n} de 2`; }
+    else {
+      t = "Ovo da mesma espécie";
+      const partes = [];
+      if (faltaMove) partes.push(pctTxt(sh.ovo.chanceEggMove) + " de egg move novo");
+      if (sh.ovo.oculta) partes.push(pctTxt(sh.ovo.chanceOculta) + " de " + ab(sh.ovo.oculta));
+      sub = partes.length ? "Por ovo: " + partes.join(" · ") : "Nada novo a liberar, só doces e IVs";
+    }
+    const w = p.custo ? Math.min(100, sh.doces / p.custo * 100) : 100;
+    const bar = p.feito ? "" : `<div class="pbar"><i class="${w >= 100 ? "full" : ""}" style="width:${w}%"></i></div><div class="info" style="font-size:11px;margin-top:3px">${sh.doces >= p.custo ? `Pronto · custa ${p.custo} doces` : `${sh.doces}/${p.custo} doces · ${p.custo - sh.doces === 1 ? "falta 1" : "faltam " + (p.custo - sh.doces)}`}</div>`;
+    return `<div class="step"><div class="grow"><div style="font-weight:600">${t}${p.feito ? '<span class="tag blue">feito</span>' : ""}</div>${sub ? `<div class="info" style="font-size:12px">${sub}</div>` : ""}${bar}</div>
+      ${p.feito ? "" : `<button class="btn" data-buy="${p.tipo}" ${p.pode ? "" : "disabled"}>${p.tipo === "ovo" ? "Comprar" : "Liberar"}</button>`}</div>`;
+  };
+  let ovos = "";
+  if (sh.ovo.comprados) {
+    const partes = [];
+    if (faltaMove) partes.push(pctTxt(sh.ovo.algumEggMove) + " de sair pelo menos um egg move novo");
+    if (sh.ovo.oculta) partes.push(pctTxt(sh.ovo.algumaOculta) + " de sair " + ab(sh.ovo.oculta));
+    ovos = `<div class="why">Com ${sh.ovo.comprados} ${sh.ovo.comprados === 1 ? "ovo" : "ovos"}: ${partes.join("; ") || "nada novo para liberar"}.</div>`;
+  }
+  const abil = sh.habilidades.map(h => `<span class="ab${h.liberada ? "" : " off"}"><small>${h.slot}</small>${ab(h.k)}${h.liberada ? "" : " 🔒"}</span>`).join("")
+    + `<span class="ab${sh.passiva.liberada ? "" : " off"}"><small>Passiva${sh.passiva.inicial ? " (forma final)" : ""}</small>${ab(sh.passiva.final)}${sh.passiva.liberada ? "" : " 🔒"}</span>`
+    + (sh.passiva.inicial ? `<div class="info" style="font-size:12px">Antes de evoluir a passiva é ${ab(sh.passiva.inicial)}.</div>` : "");
+  const eggs = `<div class="moves">${sh.eggMoves.map(e => `<div class="mv" style="background:${TY[e.t][1]};${e.liberado ? "" : "opacity:.45"}"><span>${e.liberado ? "" : "🔒 "}${esc(L.title(e.k))}${e.rare ? " ★" : ""}</span><small>${e.liberado ? (e.p > 0 ? e.p : "status") : pctTxt(e.chance) + "/ovo"}</small></div>`).join("")}</div>
+    <div class="info" style="font-size:11px;margin-top:4px">★ = egg move raro. A chance é por ovo da mesma espécie comprado com doces.</div>`;
+  const N = sh.natures, ST = ["Atk","Def","Vel","SpA","SpD"];
+  const cell = n => `<div class="nat${n.melhor ? " best" : n.liberada ? " on" : n.vale ? " vale" : ""}${natSel === n.i ? " sel" : ""}" data-nat="${n.i}">${n.nome}</div>`;
+  const grid = `<div class="natgrid"><span class="h"></span>${ST.map(x => `<span class="h">−${x}</span>`).join("")}${ST.map((x, r) => `<span class="h">+${x}</span>` + [0,1,2,3,4].map(c => cell(N[r * 5 + c])).join("")).join("")}</div>`;
+  const ns = natSel != null ? N[natSel] : null;
+  const natInfo = ns ? `<div class="why" style="margin-top:8px"><b>${ns.nome}</b> ${ns.mais ? `(+${ns.mais} −${ns.menos})` : "(neutra)"} · ${ns.liberada ? "liberada" : "não liberada"}${ns.melhor ? " · a melhor que você tem" : ""}${ns.vale ? " · melhor que a sua atual, vale caçar" : ""}${!ns.liberada ? ` <button class="btn" style="margin-left:6px;padding:4px 8px" data-hunt="${esc(m.name)}">Onde caçar</button>` : ""}</div>` : "";
+  const ivBars = `<div class="stats">${["HP","Atk","Def","SpA","SpD","Vel"].map((n, i) => `<span>${n}</span><div class="sbar"><i style="width:${m.iv[i] / 31 * 100}%;background:${m.iv[i] >= 28 ? '#4ade80' : m.iv[i] >= 15 ? '#ffcf4a' : '#f87171'}"></i></div><span>${m.iv[i]}</span>`).join("")}</div>`;
+  $("sheet").innerHTML = `<button class="btn x" id="shClose">Fechar</button>
+    <div class="top" style="padding-right:70px">${ballHTML(m, 48)}<div><div class="nm" style="font-size:17px">${esc(m.fin)}${leg}</div>
+      <div class="evo">${m.name !== m.fin ? "começa como " + esc(m.name) + " · " : ""}total ${m.bst}</div><div class="types">${m.ty.map(tyB).join("")}</div></div></div>
+    <div class="candy"><span>Doces</span><button class="btn" data-c="-1">−</button><input type="number" id="shCandy" min="0" value="${sh.doces}"><button class="btn" data-c="1">+</button>
+      <span class="big">${pt(sh.custo)} pt</span></div>
+    ${mudou ? `<div class="row" style="margin-top:6px"><span class="info" style="font-size:12px;flex:1">Simulação: nada muda no seu save.${Math.round(sh.score) !== Math.round(m.score) ? ` Score ${Math.round(m.score)} → ${Math.round(sh.score)}.` : ""}</span><button class="btn" id="shReset">Voltar ao save</button></div>` : ""}
+    <h3>Doces</h3><div>${sh.passos.map(stepHTML).join("")}</div>${ovos}
+    <h3>Habilidades</h3><div>${abil}</div>
+    <h3>Egg moves</h3>${eggs}
+    <h3>Natures</h3>${grid}
+    <div class="info" style="font-size:11px;margin-top:6px"><span style="color:var(--acc2)">Amarelo</span>: a melhor que você tem · <span style="color:var(--good)">verde</span>: liberada · <span style="color:var(--acc)">tracejado</span>: melhor que a sua, vale caçar. Toque para ver.</div>${natInfo}
+    <h3>Status base</h3>${statBars(m.st)}
+    <h3>IVs (${m.ivSum}/186)</h3>${ivBars}`;
+  $("shClose").onclick = closeSheet;
+  if ($("shReset")) $("shReset").onclick = () => { sim = {}; renderSheet(); };
+  $("sheet").querySelectorAll("[data-c]").forEach(b => b.onclick = () => { sim = { ...sim, candy: Math.max(0, sh.doces + +b.dataset.c) }; renderSheet(); });
+  $("shCandy").onchange = () => { sim = { ...sim, candy: Math.max(0, Math.floor(+$("shCandy").value || 0)) }; renderSheet(); };
+  $("sheet").querySelectorAll("[data-buy]").forEach(b => b.onclick = () => { const n = L.sheetBuy(m, GAME, sim, b.dataset.buy); if (n) { sim = n; renderSheet(); } });
+  $("sheet").querySelectorAll("[data-nat]").forEach(c => c.onclick = () => { natSel = +c.dataset.nat === natSel ? null : +c.dataset.nat; renderSheet(); });
+  $("sheet").querySelectorAll("[data-hunt]").forEach(b => b.onclick = () => hunt(b.dataset.hunt));
 }
 
 status(); renderAll(); gen();

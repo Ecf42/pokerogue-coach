@@ -62,6 +62,13 @@
     return w[plus] - w[minus];
   }
 
+  // Custo com reduções (GameData.getSpeciesStarterValue): cada redução tira 1 ponto; quem já custa 1 cai pela metade.
+  function starterValue(base, vr) {
+    let c = base;
+    for (let v = 0; v < vr; v++) c = c > 1 ? c - 1 : c / 2;
+    return c;
+  }
+
   function buildOwned(game, unlocks) {
     const out = [];
     for (const s of game.starters) {
@@ -83,7 +90,7 @@
       const passiveStart = passive && s.paf ? s.pa : null;
       const score = bst + bs * 8 + (ivSum / 186) * 40 + egg.length * 8 + (passive ? 30 : 0);
       const names = new Set([...s.mv, ...egg].map(i => game.moves[i][0]));
-      out.push({ k: s.k, id: s.id, name: pname(s.k), fin: pname(s.f), finKey: s.f, ty: s.ty, st: s.st, bst, cost: Math.max(0, s.c - vr), base: s.c, lg: s.lg,
+      out.push({ k: s.k, id: s.id, name: pname(s.k), fin: pname(s.f), finKey: s.f, ty: s.ty, st: s.st, bst, cost: starterValue(s.c, vr), base: s.c, lg: s.lg,
         abil: uniq, allAb: s.ab.filter(x => x !== "NONE"), passive, passiveStart, egg, nats, nat: best, natFit: bs, iv, ivSum, role: r, mv: s.mv, score,
         ch: s.ch, et: s.et || 0, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
         hasSetup: (r === "P" ? SETUP_P : SETUP_E).some(n => names.has(n)), hasHeal: HEAL.some(n => names.has(n)) });
@@ -226,16 +233,18 @@
   function knapsack(pool, budget, size, val) {
     // maximiza a soma de val(m) (padrão: score) com até `size` membros e custo <= budget
     const V = new Map(pool.map(m => [m, (val || (x => x.score))(m)]));
-    const B = budget, K = size;
+    // custos podem ser 0,5 ou 0,25 (redução de quem custa 1): a tabela trabalha em quartos de ponto
+    const q = c => Math.round(c * 4), B = Math.floor(budget * 4 + 1e-9), K = size;
     let dp = Array.from({ length: K + 1 }, () => Array(B + 1).fill(null));
     dp[0][0] = { s: 0, t: [] };
     for (const m of pool) {
       const nd = dp.map(r => r.slice());
-      for (let k = 0; k < K; k++) for (let b = 0; b + m.cost <= B; b++) {
+      const mc = q(m.cost);
+      for (let k = 0; k < K; k++) for (let b = 0; b + mc <= B; b++) {
         const cur = dp[k][b]; if (!cur) continue;
         if (cur.t.some(t => t.finKey === m.finKey)) continue;
-        const v = cur.s + V.get(m); const tgt = nd[k + 1][b + m.cost];
-        if (!tgt || tgt.s < v) nd[k + 1][b + m.cost] = { s: v, t: [...cur.t, m] };
+        const v = cur.s + V.get(m); const tgt = nd[k + 1][b + mc];
+        if (!tgt || tgt.s < v) nd[k + 1][b + mc] = { s: v, t: [...cur.t, m] };
       }
       dp = nd;
     }
@@ -679,7 +688,7 @@
         const liga = Object.keys(WEATHER).find(w => WEATHER[w].setters.includes(pFinal));
         add("passiva", 30 + (liga ? 15 : 0), cc.passiva, { passiva: pFinal, ...(liga ? { liga: WEATHER[liga].nome } : {}) });
       }
-      if (m.vr < 2 && m.cost > 1) add("custo", 12 * m.score / 500, cc.reducao[m.vr], { de: m.cost, para: m.cost - 1 });
+      if (m.vr < 2) add("custo", 12 * m.score / 500 * (m.cost > 1 ? 1 : 0.5), cc.reducao[m.vr], { de: m.cost, para: starterValue(m.base, m.vr + 1) });
       const e = eggOdds(m, s, game);
       if (e.missing.length || e.ha) add("ovo", 8 * e.pMove + 12 * e.pHa, cc.ovo, { eggMoves: e.missing, chanceEggMove: e.pMove, oculta: e.ha, chanceOculta: e.pHa });
       let best = m.natFit;
@@ -690,7 +699,58 @@
     return out.sort((a, b) => b.prioridade - a.prioridade);
   }
 
-  const api = { NATS, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
+  // Ficha de um inicial, no espírito do menu de doces do jogo: o que já está liberado, o que os doces compram e as
+  // chances do ovo. sim = { candy, vr, passive, eggs } simula compras sem mexer no save.
+  const STAT5 = ["Atk", "Def", "Vel", "SpA", "SpD"];
+  function starterSheet(m, game, sim) {
+    sim = sim || {};
+    const s = game.starters.find(x => x.k === m.k), cc = candyCosts(m.base, game);
+    const candy = sim.candy ?? m.candy, vr = sim.vr ?? m.vr, pa = sim.passive ?? m.paUnlocked, eggs = sim.eggs || 0;
+    const pFinal = s.paf || s.pa, e = eggOdds(m, s, game);
+    const passos = [];
+    if (cc) {
+      passos.push({ tipo: "passiva", passiva: pFinal, custo: cc.passiva, feito: pa, pode: !pa && candy >= cc.passiva });
+      passos.push(vr < 2
+        ? { tipo: "custo", de: starterValue(m.base, vr), para: starterValue(m.base, vr + 1), custo: cc.reducao[vr], feito: false, pode: candy >= cc.reducao[vr], n: vr + 1 }
+        : { tipo: "custo", de: starterValue(m.base, vr), para: null, custo: null, feito: true, pode: false, n: 2 });
+      passos.push({ tipo: "ovo", custo: cc.ovo, feito: false, pode: candy >= cc.ovo, util: e.missing.length > 0 || !!e.ha });
+    }
+    const slots = ["Habilidade 1", "Habilidade 2", "Oculta"];
+    const habilidades = s.ab.map((k, i) => ({ k, slot: slots[i], liberada: m.abil.includes(k) })).filter(x => x.k !== "NONE");
+    const eggMoves = s.em.map((id, i) => {
+      if (id == null) return null;
+      const d = game.moves[id], miss = e.missing.find(x => x.i === i);
+      return { k: d[0], t: d[1], c: d[2], p: d[3], rare: i === 3, liberado: !miss, chance: miss ? miss.p : 0 };
+    }).filter(Boolean);
+    const natures = NATS.map((nome, i) => {
+      const plus = Math.floor(i / 5), minus = i % 5;
+      const fit = natureScore(m.st, m.role, i);
+      return { i, nome, mais: plus === minus ? null : STAT5[plus], menos: plus === minus ? null : STAT5[minus], fit,
+        liberada: m.nats.includes(i), melhor: i === m.nat, vale: !m.nats.includes(i) && fit > m.natFit + 0.5 };
+    });
+    return {
+      k: m.k, nome: m.fin, inicial: m.name, ty: m.ty, lg: m.lg, st: m.st, bst: m.bst, iv: m.iv, ivSum: m.ivSum,
+      doces: candy, base: m.base, custo: starterValue(m.base, vr), passos,
+      passiva: { final: pFinal, inicial: s.paf ? s.pa : null, liberada: pa },
+      habilidades, eggMoves, natures,
+      ovo: { comprados: eggs, chanceEggMove: e.pMove, chanceOculta: e.pHa, oculta: e.ha,
+        // pelo menos um sucesso nos ovos comprados (o primeiro sucesso já basta)
+        algumEggMove: 1 - Math.pow(1 - e.pMove, eggs), algumaOculta: 1 - Math.pow(1 - e.pHa, eggs) },
+      score: m.score - (m.passive ? 30 : 0) + (pa ? 30 : 0),
+    };
+  }
+  // aplica uma compra na simulação; devolve a simulação nova ou null se não dá
+  function sheetBuy(m, game, sim, tipo) {
+    const sh = starterSheet(m, game, sim), p = sh.passos.find(x => x.tipo === tipo);
+    if (!p || !p.pode) return null;
+    const n = { candy: sh.doces - p.custo, vr: sim.vr ?? m.vr, passive: sim.passive ?? m.paUnlocked, eggs: sim.eggs || 0 };
+    if (tipo === "passiva") n.passive = true;
+    if (tipo === "custo") n.vr++;
+    if (tipo === "ovo") n.eggs++;
+    return n;
+  }
+
+  const api = { NATS, starterValue, starterSheet, sheetBuy, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
     defMult, balanceReport, lateGame, bigForms, formText, INTERACTIONS, interactionsFor, CHALLENGES, genOf,
     tmsOf, candyCosts, biomeOdds, nextBiomeOdds, linkOutcomes, reachTable, switchesLeft, minSwitches, planRoute, huntSpecies, eggOdds, farmTargets };
   if (typeof module !== "undefined") module.exports = api; else root.PRL = api;

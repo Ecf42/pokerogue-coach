@@ -58,5 +58,41 @@ ok(T.alvos_de_farm.run({ pokemon: one.fin, limite: 20 }).alvos.every(a => a.poke
 ok(Buffer.byteLength(JSON.stringify(T.alvos_de_farm.run({ limite: 20 }))) < 6000, "resposta pequena");
 for (const x of all.slice(0, 200)) { const t = A.farmText(x); ok(!/[—–]| - /.test(t.titulo + t.detalhe), "texto com travessão: " + t.detalhe); }
 
+// ---- custo com redução (GameData.getSpeciesStarterValue): quem custa 1 cai pela metade
+ok(L.starterValue(3, 0) === 3 && L.starterValue(3, 2) === 1 && L.starterValue(2, 2) === 0.5 && L.starterValue(1, 1) === 0.5 && L.starterValue(1, 2) === 0.25, "custo com reduções");
+const one1 = game.starters.find(s => s.c === 1);
+const o1 = own([[one1.k, 1, 0b001, 0, 0b0011, 2, IV, 999]]);
+ok(o1[0].cost === 0.5, "inicial de 1 ponto com uma redução custa 0,5");
+const c1 = by(L.farmTargets(o1, game), one1.k, "custo");
+ok(c1 && c1.de === 0.5 && c1.para === 0.25, "redução de quem custa 1 aparece no farm");
+ok(A.farmText(c1).titulo === "Custo de 0,5 para 0,25 pontos", "texto com vírgula: " + A.farmText(c1).titulo);
+// time com custo fracionado cabe no orçamento
+const many = own(game.starters.filter(s => s.c === 1).slice(0, 8).map(s => [s.k, 2, 0b001, 0, 0b0011, 2, IV, 0]));
+const g1 = L.generate(many, { theme: "caos", budget: 1, size: 4, rng: () => 0.5 });
+ok(g1.team.length === 4 && g1.cost <= 1, `4 iniciais de 0,25 cabem em 1 ponto (${g1.team.length}, ${g1.cost})`);
+
+// ---- ficha e simulação de compras
+const ch = own([["CHARMANDER", 0, 0b011, 0, 0b0001, 2 | (1 << 4), IV, 40]])[0];
+const sh = L.starterSheet(ch, game);
+ok(sh.doces === 40 && sh.custo === 3 && sh.passos.map(p => p.tipo).join() === "passiva,custo,ovo", "passos da ficha");
+ok(sh.passos[0].pode && sh.passos[1].pode && sh.passos[1].custo === 20 && sh.passos[2].pode, "40 doces pagam qualquer um");
+ok(sh.habilidades.length === 2 && sh.habilidades.find(h => h.slot === "Oculta").liberada === false, "oculta trancada");
+ok(sh.passiva.final === "BATTLE_BOND" && sh.passiva.inicial === "SHEER_FORCE" && !sh.passiva.liberada, "passiva da forma final e do inicial");
+ok(sh.eggMoves.length === 4 && sh.eggMoves.filter(e => e.liberado).length === 1 && sh.eggMoves[3].rare, "egg moves");
+ok(near(sh.eggMoves.filter(e => !e.liberado).reduce((a, e) => a + e.chance, 0), sh.ovo.chanceEggMove), "chances dos egg moves somam a do ovo");
+ok(sh.natures.length === 25 && sh.natures.filter(n => n.liberada).length === 2 && sh.natures.filter(n => n.melhor).length === 1, "natures");
+let sm = L.sheetBuy(ch, game, {}, "passiva");
+ok(sm.candy === 5 && sm.passive, "comprar passiva gasta 35");
+const sh2 = L.starterSheet(ch, game, sm);
+ok(sh2.passiva.liberada && sh2.score === ch.score + 30 && !sh2.passos[1].pode, "passiva liberada sobe o score e sobram 5 doces");
+ok(L.sheetBuy(ch, game, sm, "custo") === null, "sem doces para redução");
+sm = L.sheetBuy(ch, game, { candy: 200 }, "custo"); sm = L.sheetBuy(ch, game, sm, "custo");
+const sh3 = L.starterSheet(ch, game, sm);
+ok(sh3.custo === 1 && sh3.passos[1].feito && sm.candy === 200 - 20 - 50, "duas reduções: custo 1");
+sm = L.sheetBuy(ch, game, sm, "ovo"); sm = L.sheetBuy(ch, game, sm, "ovo");
+const sh4 = L.starterSheet(ch, game, sm);
+ok(sh4.ovo.comprados === 2 && near(sh4.ovo.algumaOculta, 1 - (7 / 8) ** 2), "dois ovos: chance de oculta");
+ok(ch.candy === 40 && ch.vr === 0, "simulação não mexe no save");
+
 console.log(fail ? `${fail} falhas` : "tudo ok");
 process.exit(fail ? 1 : 0);

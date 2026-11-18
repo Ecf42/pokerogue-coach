@@ -270,7 +270,7 @@
   function farmText(x) {
     const doces = x.custoDoces == null ? "" : x.falta === 0 ? `Pronto: tem ${x.doces} de ${x.custoDoces} doces.` : `${x.falta === 1 ? "Falta 1 doce" : `Faltam ${x.falta} doces`} (tem ${x.doces} de ${x.custoDoces}).`;
     if (x.tipo === "passiva") return { titulo: `Passiva ${title(x.passiva)}${x.liga ? ` (liga ${x.liga})` : ""}`, detalhe: doces };
-    if (x.tipo === "custo") return { titulo: `Custo de ${x.de} para ${x.para} pontos`, detalhe: doces };
+    if (x.tipo === "custo") return { titulo: `Custo de ${String(x.de).replace(".", ",")} para ${String(x.para).replace(".", ",")} ${x.para === 1 ? "ponto" : "pontos"}`, detalhe: doces };
     if (x.tipo === "ovo") {
       const ms = x.eggMoves.map(e => title(e.k) + (e.rare ? " (raro)" : "")).join(", ");
       const partes = [];
