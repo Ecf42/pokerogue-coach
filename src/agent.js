@@ -6,7 +6,7 @@
 
   const norm = s => String(s == null ? "" : s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const tyPt = ts => ts.filter(Boolean).map(t => TYPE_PT[t] || t);
-  const pct = x => Math.round(x * 1000) / 10;
+  const pct = x => String(Math.round(x * 1000) / 10).replace(".", ","); // para exibir: 43,4
   const NAT_STAT = ["Atk", "Def", "Vel", "SpA", "SpD"];
   const natName = n => { const p = Math.floor(n / 5), q = n % 5; return p === q ? `${NATS[n]} (neutra)` : `${NATS[n]} (+${NAT_STAT[p]} −${NAT_STAT[q]})`; };
   const MODE_PT = { CLASSIC: "Clássico", ENDLESS: "Infinito", SPLICED_ENDLESS: "Infinito com fusões", DAILY: "Diário", CHALLENGE: "Desafio" };
@@ -231,7 +231,57 @@
           };
         },
       },
+      {
+        name: "rota_biomas",
+        description: "Rota de biomas no Clássico. Alvo pode ser um bioma (chance de chegar até o fim da run e qual link escolher na próxima troca) ou um Pokémon (melhores biomas para achar ele ou a pré evolução, com chance de ver numa passagem e de chegar lá). Considera se o jogador tem Map. Retorna dados compactos.",
+        inputSchema: { type: "object", properties: {
+          de: { type: "string", description: "Bioma atual" },
+          alvo: { type: "string", description: "Bioma ou Pokémon" },
+          wave: { type: "number", description: "Wave atual (calcula quantas trocas faltam). Padrão 1" },
+          tem_map: { type: "boolean" },
+        }, required: ["de", "alvo"] },
+        run(i) { return routeAnswer(ctx, i); },
+      },
     ];
+  }
+
+  function findBiome(ctx, s) {
+    const q = norm(s);
+    return q ? ctx.biomes.biomes.find(x => norm(x.k) === q || norm(x.nome) === q) || ctx.biomes.biomes.find(x => norm(x.nome).includes(q) || norm(x.k).includes(q)) || null : null;
+  }
+
+  // Resposta da rota, usada pela ferramenta do agente e pela aba Rotas
+  function routeAnswer(ctx, i) {
+    const from = findBiome(ctx, i.de);
+    if (!from) throw new Error("Bioma de partida não encontrado: " + i.de);
+    const wave = Math.max(1, Number(i.wave) || 1), map = !!i.tem_map, steps = L.switchesLeft(wave);
+    const bname = k => (ctx.biomes.biomes.find(b => b.k === k) || {}).nome || k;
+    const base = { de: from.nome, wave, trocas_restantes: steps, map: map ? "sim" : "não" };
+    const tb = findBiome(ctx, i.alvo);
+    const d = tb ? null : findDex(ctx, i.alvo);
+    if (tb && (!d || norm(tb.nome) === norm(i.alvo) || norm(tb.k) === norm(i.alvo))) {
+      const r = L.planRoute(ctx.biomes, from.k, tb.k, steps, map);
+      return {
+        ...base, alvo: tb.nome, chance_de_chegar: pct(r.chance) + "%",
+        minimo_de_trocas: r.min == null ? "inalcançável" : r.min,
+        proxima_troca: r.next.map(x => `${x.nome}: aparece ${pct(x.aparece)}%, por ele ${pct(x.chance)}%`),
+        caminho_ideal: r.path.map(bname).join(" > "),
+        ...(map ? {} : { observacao: "Sem Map o jogo sorteia entre os links que aparecerem. Com Map seria " + pct(L.planRoute(ctx.biomes, from.k, tb.k, steps, true).chance) + "%." }),
+      };
+    }
+    const sp = d || findDex(ctx, i.alvo);
+    if (!sp) throw new Error("Não achei bioma nem Pokémon com esse nome: " + i.alvo);
+    const h = L.huntSpecies(ctx.biomes, ctx.dex.prevo, sp[1], from.k, steps, map).slice(0, 5);
+    if (!h.length) return { ...base, alvo: pname(sp[1]), resultado: "Não aparece nos pools de nenhum bioma (pode vir só de ovos, eventos ou encontros especiais)." };
+    return {
+      ...base, alvo: pname(sp[1]),
+      melhores_biomas: h.map(x => ({
+        bioma: x.nome, aparece_como: x.formas.map(pname).join(", "),
+        por_batalha: pct(x.porBatalha) + "%", como_chefe: pct(x.chefe) + "%",
+        numa_passagem: pct(x.passagem) + "%", chance_de_chegar: pct(x.chegar) + "%",
+      })),
+      observacao: "Passagem = 10 waves no bioma. Aproximação: não conta sorte, eventos nem o reroll de lendários antes da wave 55.",
+    };
   }
 
   // ---------------------------------------------------------------- arquivos do jogo
@@ -337,7 +387,7 @@
   const MODES = {
     conversa: { nome: "Conversa", guia: "" },
     carry: { nome: "Carry", guia: "MODO CARRY: o jogador escolheu um Pokémon principal. Use detalhes nele, monte o suporte em volta (gerar_time com ele travado, ou buscar_iniciais e analisar_time) cobrindo as fraquezas dele, com clima ou campo que ele aproveite e Intimidate se houver. Diga também quais itens ele quer e quando evoluir ou usar Mega." },
-    conselheiro: { nome: "Conselheiro da run", guia: "MODO CONSELHEIRO DA RUN: leia a run (resumo abaixo ou o print enviado). Diga quem trocar ou treinar, qual bioma escolher no próximo cruzamento (use a ferramenta bioma) e o que caçar, considerando as próximas lutas fixas. Se o print não deixar algo claro, diga o que precisa ver." },
+    conselheiro: { nome: "Conselheiro da run", guia: "MODO CONSELHEIRO DA RUN: leia a run (resumo abaixo ou o print enviado). Diga quem trocar ou treinar, qual bioma escolher no próximo cruzamento (use as ferramentas bioma e rota_biomas, com a wave da run e se ele tem Map) e o que caçar, considerando as próximas lutas fixas. Se o print não deixar algo claro, diga o que precisa ver." },
     raiox: { nome: "Raio X das runs", guia: "MODO RAIO X: o resumo do histórico de runs está abaixo. Aponte padrões (onde e contra quem perde, quais times foram longe) e termine com 3 mudanças concretas para a próxima run." },
   };
 
@@ -364,6 +414,6 @@
     return [{ role: "user", content: rules(ctx, mode, runInfo) }, ...h];
   }
 
-  const api = { makeCtx, tools, findOwned, findDex, detectSave, summarizeSession, summarizeHistory, nextFixed, rules, buildTurns, MODES, norm };
+  const api = { makeCtx, tools, findOwned, findDex, findBiome, routeAnswer, detectSave, summarizeSession, summarizeHistory, nextFixed, rules, buildTurns, MODES, norm };
   if (typeof module !== "undefined") module.exports = api; else root.PRA = api;
 })(this);

@@ -549,8 +549,102 @@
     return res;
   }
 
+  // ---- Fase 4: rota de biomas
+
+  // Conjuntos de próximos biomas que podem aparecer a partir de b, com a chance de cada um (SelectBiomePhase):
+  // link sem peso sempre aparece, link [X, n] aparece com chance 1/n.
+  function linkOutcomes(b) {
+    if (!b.links.length) return [];
+    if (b.links.length === 1) return [{ p: 1, avail: [b.links[0][0]] }];
+    const fixed = b.links.filter(l => l[1] === 1).map(l => l[0]), opt = b.links.filter(l => l[1] > 1), out = [];
+    for (let mask = 0; mask < (1 << opt.length); mask++) {
+      let p = 1; const avail = [...fixed];
+      opt.forEach(([k, n], bit) => { if ((mask >> bit) & 1) { p *= 1 / n; avail.push(k); } else p *= 1 - 1 / n; });
+      if (avail.length) out.push({ p, avail });
+    }
+    return out;
+  }
+
+  // Chance de chegar ao bioma alvo em até `steps` trocas, para cada bioma de partida ({BIOMA: prob}).
+  // Com Map o jogador escolhe o melhor link que apareceu; sem Map o jogo sorteia entre os que apareceram.
+  function reachTable(biomes, target, steps, hasMap) {
+    const keys = biomes.biomes.map(b => b.k);
+    const outs = Object.fromEntries(biomes.biomes.map(b => [b.k, linkOutcomes(b)]));
+    let V = Object.fromEntries(keys.map(k => [k, k === target ? 1 : 0]));
+    for (let s = 0; s < steps; s++) {
+      const N = {};
+      for (const k of keys) {
+        if (k === target) { N[k] = 1; continue; }
+        let v = 0;
+        for (const o of outs[k]) v += o.p * (hasMap ? Math.max(...o.avail.map(x => V[x])) : o.avail.reduce((a, x) => a + V[x], 0) / o.avail.length);
+        N[k] = v;
+      }
+      V = N;
+    }
+    return V;
+  }
+
+  // Trocas de bioma que ainda dá para fazer no Clássico a partir da wave atual: o jogo muda de bioma depois das waves
+  // 10, 20, ..., 180; depois da 190 ele força o END (SelectBiomePhase).
+  function switchesLeft(wave) {
+    let n = 0;
+    for (let m = 10; m <= 180; m += 10) if (m >= wave) n++;
+    return n;
+  }
+
+  // menor número de trocas até o alvo, se todos os links aparecessem
+  function minSwitches(biomes, from, target) {
+    const B = Object.fromEntries(biomes.biomes.map(b => [b.k, b]));
+    const dist = { [from]: 0 }, q = [from];
+    while (q.length) { const c = q.shift(); if (c === target) return dist[c]; for (const [n] of B[c].links) if (!(n in dist)) { dist[n] = dist[c] + 1; q.push(n); } }
+    return null;
+  }
+
+  // Plano para ir de `from` até `target` em até `steps` trocas.
+  // next: para cada link de `from`, a chance de aparecer e a chance de chegar ao alvo se você for por ele.
+  // path: caminho ideal escolhendo sempre o melhor link (supõe que os links com peso apareçam).
+  function planRoute(biomes, from, target, steps, hasMap) {
+    const B = Object.fromEntries(biomes.biomes.map(b => [b.k, b]));
+    if (!B[from] || !B[target]) return null;
+    const chance = reachTable(biomes, target, steps, hasMap)[from];
+    const after = steps > 0 ? reachTable(biomes, target, steps - 1, hasMap) : null;
+    const next = after ? nextBiomeOdds(biomes, from).map(x => ({ ...x, chance: after[x.k] })) : [];
+    // tabelas por horizonte; no empate de chance, vence quem chega mais cedo (maior soma das chances nos horizontes menores)
+    const tabs = Array.from({ length: Math.max(steps, 0) }, (_, h) => reachTable(biomes, target, h, hasMap));
+    const early = (b, s) => tabs.slice(0, s).reduce((a, T) => a + T[b], 0);
+    const path = [from];
+    let cur = from;
+    for (let s = steps; s > 0 && cur !== target; s--) {
+      const T = tabs[s - 1], opts = B[cur].links.map(l => l[0]);
+      if (!opts.length) break;
+      cur = opts.reduce((a, b) => (T[b] > T[a] + 1e-12 || (Math.abs(T[b] - T[a]) <= 1e-12 && early(b, s) > early(a, s)) ? b : a));
+      path.push(cur);
+    }
+    return { chance, next, path, min: minSwitches(biomes, from, target) };
+  }
+
+  // Onde caçar um Pokémon: biomas em que ele ou uma pré evolução aparece, com a chance por batalha, a chance de ver
+  // pelo menos um durante uma passagem de 10 waves, e a de chegar lá a tempo. Aproximação: 9 batalhas comuns
+  // (cada uma vira treinador com 1/trainerChance) e 1 chefe por passagem; não conta sorte, eventos nem o reroll de
+  // lendários antes da wave 55 (80 com total 660 ou mais).
+  function huntSpecies(biomes, prevo, key, from, steps, hasMap) {
+    const line = [key];
+    while (prevo[line[line.length - 1]]) line.push(prevo[line[line.length - 1]]);
+    const out = [];
+    for (const b of biomes.biomes) {
+      const wild = biomeOdds(biomes, b.k), boss = b.pool.BOSS ? biomeOdds(biomes, b.k, null, true) : {};
+      const pw = line.reduce((s, k) => s + (wild[k] || 0), 0), pb = line.reduce((s, k) => s + (boss[k] || 0), 0);
+      if (!pw && !pb) continue;
+      const battles = 9 * (b.trainerChance ? 1 - 1 / b.trainerChance : 1);
+      const stay = 1 - Math.pow(1 - pw, battles) * (1 - pb);
+      const reach = from === b.k ? 1 : reachTable(biomes, b.k, steps, hasMap)[from];
+      out.push({ k: b.k, nome: b.nome, formas: line.filter(k => wild[k] || boss[k]), porBatalha: pw, chefe: pb, passagem: stay, chegar: reach, total: stay * reach });
+    }
+    return out.sort((a, b) => b.total - a.total || b.passagem - a.passagem);
+  }
+
   const api = { NATS, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
     defMult, balanceReport, lateGame, bigForms, formText, INTERACTIONS, interactionsFor, CHALLENGES, genOf,
-    tmsOf, candyCosts, biomeOdds, nextBiomeOdds };
+    tmsOf, candyCosts, biomeOdds, nextBiomeOdds, linkOutcomes, reachTable, switchesLeft, minSwitches, planRoute, huntSpecies };
   if (typeof module !== "undefined") module.exports = api; else root.PRL = api;
 })(this);

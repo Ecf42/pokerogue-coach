@@ -408,7 +408,12 @@ def main():
     TT = parse_enum(src + "/enums/trainer-type.ts", "TrainerType")
     FW = parse_enum(src + "/enums/fixed-boss-waves.ts", "ClassicFixedBossWaves")
     GM = parse_enum(src + "/enums/game-modes.ts", "GameModes")
-    dex = dict(src=game_info, species=sorted(species), abilities=abil_list, moves=by_id(MV), biomes=by_id(BI), gameModes=by_id(GM),
+    # pré evolução de cada espécie (para achar onde aparece a linha de um Pokémon: o Charizard sai do Charmander)
+    prevo = {}
+    for name, s in S.items():
+        for e in s["evos"]:
+            prevo.setdefault(e, name)
+    dex = dict(src=game_info, prevo=prevo, species=sorted(species), abilities=abil_list, moves=by_id(MV), biomes=by_id(BI), gameModes=by_id(GM),
                trainers=by_id(TT), classicFixed=sorted([[w, k] for k, w in FW.items()]))
     dout = os.path.join(ROOT, "data", "dex.json")
     json.dump(dex, open(dout, "w", encoding="utf8"), separators=(",", ":"), ensure_ascii=False)

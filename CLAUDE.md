@@ -6,7 +6,7 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 
 * **Claude Code faz o trabalho pesado** aqui no repositório: extração de dados, lógica, testes e build.
 * **O app roda no claude.ai** como artifact (página publicada). O build gera um único `dist/index.html`, que o Eric leva para o chat do claude.ai para publicar no artifact existente.
-* Artifact atual (v1): https://claude.ai/artifact/4LgQ81Jofa752d1zWJb6ro
+* Artifact atual: https://claude.ai/artifact/4LgQ81Jofa752d1zWJb6ro (v3 publicada em 18/11/2026 direto do Claude Code com a ferramenta Artifact, `url` desse link e `capabilities: {sample: {images: true}}`). Dá para republicar daqui assim, sem levar o arquivo ao chat.
 * O agente usa a capability `sample` do runtime de artifacts: a página chama o Claude no plano do próprio usuário, sem chave de API. Detalhes em `docs/sample-capability.md`. Ler antes de mexer no agente.
 
 ## Restrições da página (valem para tudo que for para `dist/index.html`)
@@ -16,7 +16,7 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 * `fetch` para outros sites é bloqueado. Imagens remotas não carregam (só `data:` e `blob:`). Por isso não tem sprite: usamos bolinhas com as cores dos tipos.
 * `alert`, `confirm`, `prompt`, `window.print` e downloads iniciados pela página não funcionam. Diálogos têm que ser da própria página; para exportar, botão de Copiar.
 * `localStorage` pode falhar: sempre com try/catch, e só para conveniência (o save carregado fica lá).
-* Tamanho atual ~525 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
+* Tamanho atual ~548 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
 
 ## Estrutura
 
@@ -31,11 +31,12 @@ src/template.html              UI (placeholders __GAME__, __BIOMES__, __DEX__, _
 tests/test_logic.js            node tests/test_logic.js (gerador de times)
 tests/test_data.js             node tests/test_data.js (dados extraídos e acessores tmsOf, candyCosts, biomeOdds, nextBiomeOdds)
 tests/test_agent.js            node tests/test_agent.js (ferramentas do agente, sessão e histórico sintéticos)
+tests/test_routes.js           node tests/test_routes.js (rota de biomas e caça)
 docs/sample-capability.md      API para chamar o Claude de dentro da página
 fixtures/                      saves do Eric (os .prsv ficam fora do git)
 ```
 
-Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `python scripts/build_page.py`.
+Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `node tests/test_routes.js`, `python scripts/build_page.py`.
 
 ## Fonte dos dados
 
@@ -101,11 +102,13 @@ Bits:
 * `src/logic.js` não pode depender do DOM: tem que rodar no node para os testes.
 * Toda mudança na lógica ganha teste em `tests/`. Antes de entregar, rodar os testes e fazer o build. Tirar print do `dist/index.html` em 420px de largura (o Eric usa muito no celular) e conferir. Sem Playwright, dá com o Edge headless (`msedge --headless=new --screenshot --window-size=420,3000`), mas ele não desce de ~490px de viewport: colocar a página num `<iframe>` de 420px e fotografar o wrapper.
 
-## Estado atual (v3)
+## Estado atual (v4)
 
-Abas Gerar, Lendários e Coleção. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
+Abas Gerar, Lendários, Coleção, Rotas e Coach. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
 
 Aba Coach (v3): chat com o Claude via `sample`, modos Conversa, Carry, Conselheiro da run e Raio X das runs. Ferramentas da página (`src/agent.js`): `buscar_iniciais`, `detalhes`, `gerar_time` (o time aparece na aba Gerar), `analisar_time`, `habilidade`, `bioma`. "Carregar run" aceita a sessão exportada ou o histórico de runs; a página resume (`summarizeSession`, `summarizeHistory`) e só o resumo vai para o Claude. "Anexar print" manda imagens. Sem `window.claude` (fora do claude.ai) a aba mostra um aviso e o resto funciona.
+
+Aba Rotas (v4): de um bioma até outro bioma ou até um Pokémon, pela wave e com ou sem Map (`A.routeAnswer`, a mesma resposta da ferramenta `rota_biomas` do agente).
 
 **Publicar com `capabilities: {sample: {images: true}}`** (o Anexar print precisa de `images`).
 
@@ -147,7 +150,8 @@ Modos:
 
 Instruções do agente ficam num turno `user` fixo no começo da conversa: responder em português, direto, sem travessões, citar números do save quando ajudarem, e não inventar dados que as ferramentas não deram.
 
-### Fase 4: rota de biomas
+### Fase 4: rota de biomas (feita em 18/11/2026)
+Em `logic.js`: `linkOutcomes`, `reachTable` (programação dinâmica: V_k(b) = chance de chegar ao alvo em até k trocas; com Map pega o melhor link que apareceu, sem Map a média), `switchesLeft` (trocas depois das waves 10..180; na 190 o jogo força o END), `planRoute` (chance, valor de cada próximo link, caminho ideal desempatando pela chegada mais cedo) e `huntSpecies` (biomas onde o Pokémon ou uma pré evolução aparece, via `dex.prevo`; passagem = 9 batalhas comuns e 1 chefe, aproximado).
 Busca no grafo de biomas maximizando a probabilidade de chegar ao bioma alvo em N trocas, considerando que o Map permite escolher o caminho.
 
 ### Fase 5: caçador de desbloqueios

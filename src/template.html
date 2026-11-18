@@ -22,14 +22,14 @@
   .btn:hover{border-color:var(--acc)}
   .btn.pri{background:var(--acc);color:#04202b;border-color:var(--acc);font-weight:700}
   .tabs{display:flex;gap:6px;margin:14px 0 10px}
-  .tab{flex:1;text-align:center;padding:9px 6px;border-radius:9px;background:var(--panel);border:1px solid var(--line);cursor:pointer;color:var(--muted);font-weight:600}
+  .tab{flex:1;text-align:center;padding:9px 2px;font-size:13px;white-space:nowrap;border-radius:9px;background:var(--panel);border:1px solid var(--line);cursor:pointer;color:var(--muted);font-weight:600}
   .tab.on{color:var(--ink);border-color:var(--acc);background:var(--panel2)}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px}
   .chip{padding:7px 11px;border-radius:999px;background:var(--panel);border:1px solid var(--line);cursor:pointer;font-size:13px;color:var(--muted)}
   .chip.on{background:var(--acc2);border-color:var(--acc2);color:#2a2000;font-weight:700}
   .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   label.sm{font-size:12px;color:var(--muted)}
-  select,input[type=text]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+  select,input[type=text],input[type=number]{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
   .summary{margin:14px 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
   .summary .pts{font-family:"Press Start 2P",monospace;font-size:12px;color:var(--acc2)}
   .info{color:var(--muted);font-size:13px}
@@ -102,6 +102,7 @@
     <div class="tab on" data-tab="gen">Gerar</div>
     <div class="tab" data-tab="leg">Lendários</div>
     <div class="tab" data-tab="col">Coleção</div>
+    <div class="tab" data-tab="rota">Rotas</div>
     <div class="tab" data-tab="coach">Coach</div>
   </div>
 
@@ -119,6 +120,7 @@
     <div class="summary"><div class="info" id="info"></div><div class="pts" id="pts"></div></div>
     <div class="grid" id="team"></div>
     <div class="weak" id="weak"></div>
+    <p class="note">Os golpes sugeridos vêm dos golpes por nível e dos egg moves que você já desbloqueou; golpes marcados com ★ são egg moves. Os TMs ficam à parte porque dependem da loja: vale pegar se aparecerem (o tier diz em que raridade eles saem). A passiva mostrada é a da forma final, que é a que vale em batalha depois de evoluir. A nature sugerida é a melhor entre as que você tem desbloqueadas pra aquele Pokémon.</p>
   </section>
 
   <section id="tab-leg" class="hide">
@@ -133,6 +135,15 @@
       <select id="sort"><option value="score">Mais fortes</option><option value="cost">Mais baratos</option><option value="value">Melhor custo</option></select>
     </div>
     <div class="list" id="col"></div>
+  </section>
+
+  <section id="tab-rota" class="hide">
+    <p class="info">Chance de chegar a um bioma, ou de achar um Pokémon, até o fim do Clássico. O bioma muda depois das waves 10, 20, ..., 180; com Map você escolhe entre os caminhos que aparecerem, sem Map é sorteio.</p>
+    <div class="row" style="margin-top:8px"><label class="sm" style="width:62px;white-space:nowrap">Estou em</label><select id="rFrom" style="flex:1"></select></div>
+    <div class="row" style="margin-top:8px"><label class="sm" style="width:62px;white-space:nowrap">Quero</label><input type="text" id="rTo" list="rList" placeholder="Bioma ou Pokémon" style="flex:1;min-width:140px"><datalist id="rList"></datalist></div>
+    <div class="row" style="margin-top:8px"><label class="sm" style="width:62px;white-space:nowrap">Wave</label><input type="number" id="rWave" value="1" min="1" max="200" style="width:80px">
+      <label class="sm"><input type="checkbox" id="rMap"> Tenho Map</label><button class="btn pri" id="rGo">Calcular</button></div>
+    <div id="rOut" style="margin-top:12px"></div>
   </section>
 
   <section id="tab-coach" class="hide">
@@ -156,7 +167,6 @@
     </div>
   </section>
 
-  <p class="note">Os golpes sugeridos vêm dos golpes por nível e dos egg moves que você já desbloqueou; golpes marcados com ★ são egg moves. Os TMs ficam à parte porque dependem da loja: vale pegar se aparecerem (o tier diz em que raridade eles saem). A passiva mostrada é a da forma final, que é a que vale em batalha depois de evoluir. A nature sugerida é a melhor entre as que você tem desbloqueadas pra aquele Pokémon.</p>
 </div>
 <div class="toast" id="toast"></div>
 
@@ -221,7 +231,7 @@ function alertBox(t){ $("info").textContent = t; }
 // ---------- tabs ----------
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  ["gen","leg","col","coach"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
+  ["gen","leg","col","rota","coach"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
 });
 
 // ---------- gerar ----------
@@ -503,6 +513,26 @@ $("runFile").addEventListener("change", async e => {
   if (!(sampleLimits && sampleLimits.images)) $("imgBtn").classList.add("hide");
   renderMode(); renderAtts();
 })();
+
+// ---------- rotas (Fase 4) ----------
+$("rFrom").innerHTML = BIOMES.biomes.filter(b => b.k !== "END").map(b => `<option value="${b.k}">${esc(b.nome)}</option>`).join("");
+$("rFrom").value = "TOWN";
+$("rList").innerHTML = [...BIOMES.biomes.filter(b => b.k !== "END").map(b => b.nome), ...DEX.species.map(r => L.pname(r[1]))].map(n => `<option value="${esc(n)}">`).join("");
+function routeHTML(r){
+  const head = `<div class="kv"><span class="k">Saindo de</span><span>${esc(r.de)}, wave ${r.wave}</span><span class="k">Trocas</span><span>${r.trocas_restantes} até o fim do Clássico</span><span class="k">Map</span><span>${r.map}</span></div>`;
+  if (r.chance_de_chegar) return `<div class="card"><div class="cost">${r.chance_de_chegar}</div><div class="nm">${esc(r.alvo)}</div>${head}
+    <div class="kv"><span class="k">Mínimo</span><span>${r.minimo_de_trocas} trocas</span><span class="k">Caminho</span><span>${esc(r.caminho_ideal)}</span></div>
+    ${r.proxima_troca.length ? `<div class="info">Na próxima troca:</div><ul style="margin:4px 0;padding-left:18px">${r.proxima_troca.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${r.observacao ? `<p class="note" style="margin-top:6px">${esc(r.observacao)}</p>` : ""}</div>`;
+  if (r.resultado) return `<div class="card"><div class="nm">${esc(r.alvo)}</div>${head}<p class="info">${esc(r.resultado)}</p></div>`;
+  return `<div class="card"><div class="nm">${esc(r.alvo)}</div>${head}<div class="list">${r.melhores_biomas.map(b => `<div class="li"><div class="grow"><div class="nm">${esc(b.bioma)} <span class="muted" style="font-weight:400;font-size:12px">como ${esc(b.aparece_como)}</span></div>
+    <div class="info" style="font-size:12px">Numa passagem ${b.numa_passagem} · chegar lá ${b.chance_de_chegar} · por batalha ${b.por_batalha} · chefe ${b.como_chefe}</div></div></div>`).join("")}</div>
+    <p class="note" style="margin-top:8px">${esc(r.observacao)}</p></div>`;
+}
+$("rGo").onclick = () => {
+  try { $("rOut").innerHTML = routeHTML(A.routeAnswer(A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label }), { de: $("rFrom").value, alvo: $("rTo").value, wave: $("rWave").value, tem_map: $("rMap").checked })); }
+  catch (e) { $("rOut").innerHTML = `<p class="info">${esc(e.message || "Não deu para calcular.")}</p>`; }
+};
 
 status(); renderAll(); gen();
 </script>
