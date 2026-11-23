@@ -131,6 +131,8 @@ def parse_species(src, FK):
     species, levelmoves = {}, {}
     for f in sorted(glob.glob(src + "/data/balance/species/*.ts")):
         t = read(f)
+        gm = re.search(r"generation-(\d+)", os.path.basename(f))
+        gen = int(gm.group(1)) if gm else None
         parts = re.split(r"\n\s*\w+SpeciesData\[SpeciesId\.(\w+)\]\s*=\s*\{", t)
         for i in range(1, len(parts), 2):
             name, b = parts[i], parts[i + 1]
@@ -169,7 +171,7 @@ def parse_species(src, FK):
             sc, st = g("starterCost"), g("starter")
             etier = (g("eggTier") or "EggTier.COMMON").split(".")[-1]
             species[name] = dict(
-                **base, bst=sum(base["stats"]), cost=int(sc) if sc else None,
+                **base, gen=gen, bst=sum(base["stats"]), cost=int(sc) if sc else None,
                 starter=st.split(".")[-1] if st else None, evos=evos,
                 passive=passives.get(0), passives=passives, forms=forms, changes=changes,
                 tms=re.findall(r"MoveId\.(\w+)", tmb) if tmb else [],
@@ -198,6 +200,55 @@ def parse_moves(src):
 def parse_tm_tiers(src):
     t = read(src + "/data/balance/tm-pool-tiers.ts")
     return {mv: TM_TIER[tier] for mv, tier in re.findall(r"\[MoveId\.(\w+)\]:\s*ModifierTier\.(\w+)", t)}
+
+
+TYPES_ORDER = ["NORMAL", "FIGHTING", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL", "FIRE", "WATER",
+               "GRASS", "ELECTRIC", "PSYCHIC", "ICE", "DRAGON", "DARK", "FAIRY"]
+
+
+def parse_achv(src, pt):
+    """Conquistas de src/system/achv.ts com nome e descrição em pt-BR.
+
+    k chave salva em achvUnlocks, n nome, d descrição, p pontos, s secreta, c classe, v valor (contagem de fitas,
+    dinheiro, dano, cura, nível, geração ou tipo do desafio)."""
+    t = read(src + "/system/achv.ts")
+    body = t[t.index("export const achvs = {"):]
+    body = body[:body.index("\n};")]
+    entries = re.split(r"\n  (\w+): new ", body)[1:]
+    out = []
+    generic = dict(MoneyAchv=("moneyAchv", "moneyAmount"), DamageAchv=("damageAchv", "damageAmount"),
+                   HealAchv=("healAchv", "healAmount"), LevelAchv=("levelAchv", "level"), RibbonAchv=("ribbonAchv", "ribbonAmount"))
+    for i in range(0, len(entries), 2):
+        key, b = entries[i], entries[i + 1]
+        cls = re.match(r"(\w+)\(", b).group(1)
+        args = re.findall(r'"([^"]*)"|\b(\d+)\b', b.split("=>")[0])
+        strs = [a for a, _ in args if a]
+        nums = [int(n) for _, n in args if n]
+        loc = strs[0]
+        L = pt.get(loc, {})
+        name = L.get("name") or loc
+        val = None
+        if cls in generic:
+            gk, ph = generic[cls]
+            val = nums[0]
+            desc = pt.get(gk, {}).get("description", "").replace("{{" + ph + "}}", f"{val:,}".replace(",", ".")).replace("{{HP}}", "PS")
+        else:
+            desc = L.get("description", "")
+        if cls == "MonoTypeChallengeAchv":
+            ty = re.search(r"PokemonType\.(\w+)", b).group(1)
+            val = ty
+            desc = pt.get("monoType", {}).get("description", "").replace("{{type}}", ty)
+        if cls == "ChallengeAchv":
+            g = re.search(r"SingleGenerationChallenge\s*&&\s*c\.value === (\d+)", b)
+            if g:
+                val = int(g.group(1))
+        # pontos: o número logo depois do nome do ícone (Classe("chave", [tipo,] [valor,] "ícone", pontos, ...))
+        pts = re.search(r'^\w+\(\s*"[^"]*",\s*(?:PokemonType\.\w+,\s*)?(?:\d+,\s*)?"[^"]*",\s*(\d+)', b)
+        e = dict(k=key, n=name, d=desc, p=int(pts.group(1)) if pts else None, s=1 if ".setSecret(" in b else 0, c=cls)
+        if val is not None:
+            e["v"] = val
+        out.append(e)
+    return out
 
 
 def parse_candy(src):
@@ -258,7 +309,7 @@ def main():
     ap.add_argument("--repo", default=os.path.join(ROOT, ".cache", "pokerogue"))
     ap.add_argument("--locales", default=os.path.join(ROOT, ".cache", "pokerogue-locales"))
     args = ap.parse_args()
-    repo = ensure_repo(args.repo, GAME_URL, ["src/data", "src/enums"])
+    repo = ensure_repo(args.repo, GAME_URL, ["src/data", "src/enums", "src/system"])
     loc = ensure_repo(args.locales, LOCALES_URL, ["en", "pt-BR"])
     src = os.path.join(repo, "src")
     lj = lambda lang, f: json.load(open(os.path.join(loc, lang, f), encoding="utf8"))
@@ -324,6 +375,7 @@ def main():
                 out.append(e)
         return out
 
+    DEFAULT_STARTERS = set(re.findall(r"SpeciesId\.(\w+)", read(src + "/constants.ts").split("defaultStarterSpecies")[1].split("];")[0]))
     starters, starter_tms = [], []
     for n, s in S.items():
         if not s["cost"] or s.get("starter") != n:
@@ -349,6 +401,16 @@ def main():
         # passiva diferente da do inicial, guardamos as duas: pa (inicial, igual à tela de seleção) e paf (final).
         if F["passive"] and F["passive"] != s["passive"]:
             e["paf"] = F["passive"]
+        # ln: [espécie, geração, tipos, total, índice da pré evolução em ln (-1 no inicial)]
+        ln, at = [], {}
+        for path in all_paths:
+            for j, sp in enumerate(path):
+                if sp not in at:
+                    at[sp] = len(ln)
+                    ln.append([sp, S[sp]["gen"], [t for t in S[sp]["types"] if t != "null"], S[sp]["bst"], at[path[j - 1]] if j else -1])
+        e["ln"] = ln
+        if n in DEFAULT_STARTERS:
+            e["ds"] = 1
         fo = item_forms(list(dict.fromkeys(sp for path in all_paths for sp in path)))
         if fo:
             e["fo"] = fo
@@ -372,7 +434,8 @@ def main():
 
     game_info = repo_info(repo)
     out = os.path.join(ROOT, "data", "gamedata.json")
-    json.dump(dict(src=game_info, starters=starters, moves=mvlist, tms=tms, abilities=abilities, candy=parse_candy(src)),
+    json.dump(dict(src=game_info, starters=starters, moves=mvlist, tms=tms, abilities=abilities, candy=parse_candy(src),
+                   achv=parse_achv(src, lj("pt-BR", "achv.json"))),
               open(out, "w", encoding="utf8"), separators=(",", ":"), ensure_ascii=False)
     print(f"{len(starters)} iniciais, {len(mvlist)} golpes, {len(abilities)} habilidades -> {out}")
 

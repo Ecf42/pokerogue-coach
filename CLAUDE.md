@@ -1,13 +1,13 @@
 # PokéRogue Coach
 
-App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais criativos com o que ele já desbloqueou e, na próxima fase, vira um agente que dá conselhos durante a run.
+App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais com o que ele já desbloqueou, calcula rotas de bioma, mostra o que farmar e planeja as conquistas. Foco combinado com o Eric em 23/11/2026: decidir rota e montar time, para pegar todas as conquistas.
 
 ## Como o projeto funciona
 
 * **Claude Code faz o trabalho pesado** aqui no repositório: extração de dados, lógica, testes e build.
 * **O app roda no claude.ai** como artifact (página publicada). O build gera um único `dist/index.html`, que o Eric leva para o chat do claude.ai para publicar no artifact existente.
-* Artifact atual: https://claude.ai/artifact/4LgQ81Jofa752d1zWJb6ro (v3 publicada em 18/11/2026 direto do Claude Code com a ferramenta Artifact, `url` desse link e `capabilities: {sample: {images: true}}`). Dá para republicar daqui assim, sem levar o arquivo ao chat.
-* O agente usa a capability `sample` do runtime de artifacts: a página chama o Claude no plano do próprio usuário, sem chave de API. Detalhes em `docs/sample-capability.md`. Ler antes de mexer no agente.
+* Artifact atual: https://claude.ai/artifact/4LgQ81Jofa752d1zWJb6ro. Dá para republicar direto do Claude Code com a ferramenta Artifact e o `url` desse link, sem levar o arquivo ao chat.
+* O Coach (chat com o Claude pela capability `sample`) saiu na v9, a pedido do Eric. A página não declara capability nenhuma. `src/agent.js` continua no build porque a Rotas e o Farm usam `routeAnswer`, `farmList` e `farmText`; as ferramentas do agente ficaram lá, testadas, caso ele volte. `docs/sample-capability.md` explica a API se precisar.
 
 ## Restrições da página (valem para tudo que for para `dist/index.html`)
 
@@ -16,7 +16,7 @@ App pessoal do Eric para o PokéRogue (pokerogue.net): monta times iniciais cria
 * `fetch` para outros sites é bloqueado. Imagens remotas não carregam (só `data:` e `blob:`). Por isso não tem sprite: usamos bolinhas com as cores dos tipos.
 * `alert`, `confirm`, `prompt`, `window.print` e downloads iniciados pela página não funcionam. Diálogos têm que ser da própria página; para exportar, botão de Copiar.
 * `localStorage` pode falhar: sempre com try/catch, e só para conveniência (o save carregado fica lá).
-* Tamanho atual ~580 KB (gamedata ~310 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
+* Tamanho atual ~630 KB (gamedata ~365 KB, dex ~70 KB, biomas ~36 KB). Limite do artifact é 16 MB, mas manter enxuto.
 
 ## Estrutura
 
@@ -26,18 +26,19 @@ scripts/decrypt_save.py        .prsv -> JSON
 scripts/save_unlocks.py        data.json -> desbloqueios compactos (fixtures/mysave_unlocks.json)
 scripts/build_page.py          src/ + data/ + fixtures/ -> dist/index.html
 src/logic.js                   lógica do gerador (roda no navegador e no node)
-src/agent.js                   agente: ferramentas, instruções, leitura de sessão e histórico (navegador e node)
+src/agent.js                   respostas de rota e farm usadas pela UI; ferramentas e leitura de sessão do antigo Coach
 src/template.html              UI (placeholders __GAME__, __BIOMES__, __DEX__, __UNLOCKS__, __LABEL__, __LOGIC__, __AGENT__)
 tests/test_logic.js            node tests/test_logic.js (gerador de times)
 tests/test_data.js             node tests/test_data.js (dados extraídos e acessores tmsOf, candyCosts, biomeOdds, nextBiomeOdds)
 tests/test_agent.js            node tests/test_agent.js (ferramentas do agente, sessão e histórico sintéticos)
 tests/test_routes.js           node tests/test_routes.js (rota de biomas e caça)
-tests/test_farm.js             node tests/test_farm.js (caçador de desbloqueios)
+tests/test_farm.js             node tests/test_farm.js (caçador de desbloqueios e ficha)
+tests/test_achv.js             node tests/test_achv.js (conquistas e regras de Monogeração e Monotipo)
 docs/sample-capability.md      API para chamar o Claude de dentro da página
 fixtures/                      saves do Eric (os .prsv ficam fora do git)
 ```
 
-Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `node tests/test_routes.js`, `node tests/test_farm.js`, `python scripts/build_page.py`.
+Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node tests/test_data.js`, `node tests/test_logic.js`, `node tests/test_agent.js`, `node tests/test_routes.js`, `node tests/test_farm.js`, `node tests/test_achv.js`, `python scripts/build_page.py`.
 
 ## Fonte dos dados
 
@@ -52,6 +53,9 @@ Fluxo: `python scripts/extract_game_data.py` (quando o jogo atualizar), `node te
   * `src/enums/form-change-item.ts`: itens de forma. Valor < 150 vai para o pool Rogue (`RARE_FORM_CHANGE_ITEM`: Megas, orbes, Max Mushrooms, Reveal Glass...), o resto para o Ultra (placas, memórias, drives, Gracidea...). Mega/Primal exigem Mega Bracelet; Gmax exige Dynamax Band (`modifier/modifier-type.ts`)
   * `src/data/balance/starters.ts`: doces para passiva, as duas reduções de custo e o ovo, por custo original do inicial
   * `src/data/challenge.ts`: regras de desafio e de pontos
+  * `src/system/achv.ts`: as 76 conquistas (classe, valor, pontos, secreta). Nome e descrição em `pokerogue-locales/pt-BR/achv.json`; as genéricas (dinheiro, dano, cura, nível, fitas, Monotipo) usam a descrição da classe com o valor
+  * `src/data/mystery-encounters/mystery-encounter-biomes.ts`: eventos por bioma (o Criador do Espaço vem do Expert Pokémon Breeder, raridade Ultra, waves 25 a 180)
+  * `src/constants.ts`: `defaultStarterSpecies` (iniciais do Novo Começo)
   * `src/enums/`: SpeciesId, MoveId, AbilityId, BiomeId etc. O parser de enum em `extract_game_data.py` resolve valores explícitos
 
 ## Formato do save
@@ -76,10 +80,12 @@ Bits:
 
 ## Formato dos dados extraídos
 
-**data/gamedata.json**: `src` (commit do jogo), `starters`, `moves`, `tms`, `abilities`, `candy`.
+**data/gamedata.json**: `src` (commit do jogo), `starters`, `moves`, `tms`, `abilities`, `candy`, `achv`.
+* `achv[]` = `{k, n, d, p, s, c, v}`: chave salva em `achvUnlocks` (`{CHAVE: timestamp}` no save), nome e descrição pt-BR, pontos, secreta, classe, valor (geração, tipo, dinheiro...)
 * `moves[i]` = `[nome, tipo, categoria P/E/X, poder, tier de TM]` (tier 0 = não é TM, 1 comum, 2 ótimo, 3 ultra)
 * `starters[]`: `k` inicial, `id`, `f` forma final (maior BST, primeiro em empate), `ty`, `st`, `ab`, `pa`, `paf`, `em`, `c`, `lg`, `mv`, `ch`, `tm`, `fo`
   * `tm`: bitset hexadecimal sobre `tms` (ler com `L.tmsOf(s, GAME)`). TMs da linha toda, só os implementados e com tier
+  * `ln`: linha evolutiva `[espécie, geração, tipos, total, índice da pré evolução]` (geração = arquivo `generation-0X.ts`). `ds` = inicial padrão
   * `fo`: formas por item de qualquer ramo da linha. `sp` espécie que usa, `n` nome, `k` formKey, `it` item, `rare`, `acc` (`mega`, `gmax` ou null), `ty`, `st`, `ab`, `pa`, `de` (forma de origem, se não for a padrão)
 * `abilities[KEY]` = `[nome, descrição pt-BR]`, só as que aparecem nos iniciais e formas
 * `candy[custo-1]` = `[passiva, redução 1, redução 2, ovo]` (ler com `L.candyCosts(custoOriginal, GAME)`)
@@ -103,11 +109,16 @@ Bits:
 * `src/logic.js` não pode depender do DOM: tem que rodar no node para os testes.
 * Toda mudança na lógica ganha teste em `tests/`. Antes de entregar, rodar os testes e fazer o build. Tirar print do `dist/index.html` em 420px de largura (o Eric usa muito no celular) e conferir. Sem Playwright, dá com o Edge headless (`msedge --headless=new --screenshot --window-size=420,3000`), mas ele não desce de ~490px de viewport: colocar a página num `<iframe>` de 420px e fotografar o wrapper.
 
-## Estado atual (v5)
+## Estado atual (v9)
 
-Abas Gerar, Lendas, Coleção, Farm, Rotas e Coach. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
+Abas Gerar, Lendas, Coleção, Farm, Rotas e Metas. Temas: Lendário + ruins, Equilibrado, Late game absurdo, Interações legais, Mega e Gigantamax, Sol, Chuva, Areia, Neve, Monotipo, Só os fracos, Máximo poder (mochila 0/1 por score), Desafio, Caos. Para cada membro: melhor nature desbloqueada, habilidades e passiva liberadas (a da forma final, com a do inicial embaixo quando muda), 4 golpes sugeridos (só golpes por nível e egg moves liberados), até 3 TMs "se aparecerem" com tier e motivo, formas Mega/Gmax, o porquê do membro no tema, status, IVs, travar e trocar membro, fraquezas repetidas do time (considerando habilidades como Levitate e Thick Fat). Upload de .prsv descriptografa no navegador.
 
-Aba Coach (v3): chat com o Claude via `sample`, modos Conversa, Carry, Conselheiro da run e Raio X das runs. Ferramentas da página (`src/agent.js`): `buscar_iniciais`, `detalhes`, `gerar_time` (o time aparece na aba Gerar), `analisar_time`, `habilidade`, `bioma`. "Carregar run" aceita a sessão exportada ou o histórico de runs; a página resume (`summarizeSession`, `summarizeHistory`) e só o resumo vai para o Claude. "Anexar print" manda imagens. Sem `window.claude` (fora do claude.ai) a aba mostra um aviso e o resto funciona.
+Aba Metas (v9): as 76 conquistas, as que faltam primeiro (lê `achvUnlocks` quando o .prsv é carregado; o save embutido não tem essa informação). `L.achvPlans` dá um plano por conquista:
+* time: Monogeração e Monotipo com as regras de `challenge.ts` (o inicial precisa cumprir e, em batalha, vale a espécie atual: `L.bestInLine` diz até onde evoluir), Passivas, Novo Começo, Sem Evoluir, Clássico, Mega e Gigantamax. Mochila em quartos de ponto com valor `(score/450)^5`, que mistura fortes e baratos
+* rota: Criadores no Espaço (rota até o Espaço)
+* caça: capturar lendário, mítico e sublendário (`L.classHunt`, os 3 melhores biomas, sem o END)
+* o resto (sorte, grind, Inverse, Flip Stats, Nuzlocke) mostra só a descrição. Inverse e Flip Stats precisam de lógica de tipos e status invertidos, combinado de fazer depois
+"Abrir no Gerar" põe o time travado na aba Gerar com a nota de até onde evoluir.
 
 Aba Farm (v8): busca por Pokémon e ficha (`L.starterSheet`, `L.sheetBuy`): doces, passiva, reduções, ovo com chance por ovo e acumulada, habilidades, egg moves, grade de natures 5x5 e IVs, com simulador de compras que não mexe no save. Custo com redução segue `getSpeciesStarterValue` (`L.starterValue`: quem custa 1 cai para 0,5 e 0,25); o knapsack trabalha em quartos de ponto.
 
@@ -115,7 +126,7 @@ Aba Farm (v5): `L.farmTargets` lista passivas e reduções de custo (doces que f
 
 Aba Rotas (v4, caminho e wave de chegada na v7): de um bioma até outro bioma ou até um Pokémon, pela wave e com ou sem Map; na caça mostra o caminho até cada bioma e a ordem de escolha na próxima troca (`A.routeAnswer`, a mesma resposta da ferramenta `rota_biomas` do agente).
 
-**Publicar com `capabilities: {sample: {images: true}}`** (o Anexar print precisa de `images`).
+**Publicar sem capabilities** (a v9 limpou com `capabilities: {}`).
 
 Score de um inicial: `BST + 8*encaixe da nature + 40*IVs/186 + 8*egg moves + 30 se passiva liberada`.
 

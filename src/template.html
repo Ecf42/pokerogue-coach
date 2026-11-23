@@ -71,19 +71,6 @@
   .note{font-size:12px;color:var(--muted);margin-top:14px;line-height:1.5}
   .why{font-size:12px;line-height:1.45;margin-top:8px;padding:7px 9px;border-radius:8px;background:var(--panel2);border-left:3px solid var(--acc2)}
   .tms{font-size:12px;margin-top:8px;line-height:1.6}
-  .chat{display:flex;flex-direction:column;gap:8px;margin:10px 0}
-  .bub{border-radius:12px;padding:9px 12px;line-height:1.5;font-size:14px;max-width:100%;overflow-wrap:anywhere}
-  .bub.user{background:#0c2a36;border:1px solid #1b5368;align-self:flex-end;white-space:pre-wrap}
-  .bub.assistant{background:var(--panel);border:1px solid var(--line)}
-  .bub p{margin:0 0 6px}.bub p:last-child{margin:0}.bub ul{margin:4px 0 6px;padding-left:20px}.bub li{margin:2px 0}
-  .bub code{background:var(--panel2);border-radius:4px;padding:0 4px}
-  .bub .prog{font-size:12px;color:var(--muted);margin-top:6px}
-  .bub.err{border-color:var(--bad)}
-  textarea{font-family:inherit;font-size:14px;background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:8px 10px;width:100%;min-height:62px;resize:vertical}
-  .modebox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1.5}
-  .modebox .row{margin-top:8px}
-  .att{display:inline-flex;gap:6px;align-items:center;font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;margin:6px 6px 0 0}
-  .att b{cursor:pointer;color:var(--muted)}
   .overlay{position:fixed;inset:0;background:rgba(5,7,12,.72);z-index:20;overflow-y:auto;padding:16px 10px}
   .sheet{max-width:560px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;position:relative}
   .sheet h3{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:14px 0 6px}
@@ -129,7 +116,7 @@
     <div class="tab" data-tab="col">Coleção</div>
     <div class="tab" data-tab="farm">Farm</div>
     <div class="tab" data-tab="rota">Rotas</div>
-    <div class="tab" data-tab="coach">Coach</div>
+    <div class="tab" data-tab="metas">Metas</div>
   </div>
 
   <section id="tab-gen">
@@ -180,25 +167,11 @@
     <div id="rOut" style="margin-top:12px"></div>
   </section>
 
-  <section id="tab-coach" class="hide">
-    <p class="info" id="coachOff">Carregando o Coach...</p>
-    <div id="coachOn" class="hide">
-      <div class="chips" id="modes"></div>
-      <div class="modebox" id="modeBox"></div>
-      <div id="atts"></div>
-      <div class="chat" id="chat"></div>
-      <textarea id="msg" placeholder="Pergunte ao Coach (Enter envia, Shift+Enter quebra linha)"></textarea>
-      <div class="row" style="margin-top:8px">
-        <button class="btn pri" id="send">Enviar</button>
-        <button class="btn hide" id="stop">Parar</button>
-        <label class="btn" for="runFile">Carregar run</label>
-        <label class="btn" for="imgFile" id="imgBtn">Anexar print</label>
-        <button class="btn" id="newChat">Nova conversa</button>
-      </div>
-      <input type="file" id="runFile" accept=".prsv,.json,.txt" class="hide">
-      <input type="file" id="imgFile" accept="image/png,image/jpeg,image/webp,image/gif" class="hide" multiple>
-      <p class="note">O Coach usa o Claude da sua conta do claude.ai; o primeiro uso pede permissão. Ele consulta os seus desbloqueios e os dados do jogo por ferramentas da própria página. "Carregar run" aceita a sessão exportada (para o Conselheiro) ou o histórico de runs (para o Raio X); o arquivo é lido aqui no navegador e só um resumo vai para o Claude.</p>
-    </div>
+  <section id="tab-metas" class="hide">
+    <p class="info" id="metasHead"></p>
+    <div class="chips" id="metasChips"></div>
+    <div class="list" id="metasList"></div>
+    <p class="note">Toque numa conquista para ver o plano: o time que cabe na regra com o que você tem, a rota até o bioma certo ou onde procurar. As que dependem só de sorte ou grind ficam no fim, com a descrição do jogo.</p>
   </section>
 
 </div>
@@ -226,8 +199,8 @@ const ab = a => L.title(a);
 const tyB = t => `<span class="ty" style="background:${TY[t][1]}">${TY[t][0]}</span>`;
 const $ = id => document.getElementById(id);
 
-let unlocks = DEFAULT_UNLOCKS, label = DEFAULT_LABEL;
-try { const s = localStorage.getItem("prl_unlocks"); if (s) { const o = JSON.parse(s); unlocks = o.u; label = o.l; } } catch (e) {}
+let unlocks = DEFAULT_UNLOCKS, label = DEFAULT_LABEL, achvTem = null;
+try { const s = localStorage.getItem("prl_unlocks"); if (s) { const o = JSON.parse(s); unlocks = o.u; label = o.l; achvTem = o.a || null; } } catch (e) {}
 let owned = L.buildOwned(GAME, unlocks);
 let theme = "lenda", current = null, locked = new Set();
 
@@ -255,9 +228,10 @@ $("file").addEventListener("change", async e => {
     if (txt.startsWith("{")) data = JSON.parse(txt);
     else { const dec = CryptoJS.AES.decrypt(txt, SAVE_KEY).toString(CryptoJS.enc.Utf8); data = JSON.parse(dec); }
     unlocks = unlocksFromSave(data);
+    achvTem = data.achvUnlocks || {};
     const ts = data.timestamp ? new Date(data.timestamp) : new Date();
     label = ts.toLocaleDateString("pt-BR");
-    try { localStorage.setItem("prl_unlocks", JSON.stringify({u: unlocks, l: label})); } catch (e) {}
+    try { localStorage.setItem("prl_unlocks", JSON.stringify({u: unlocks, l: label, a: achvTem})); } catch (e) {}
     owned = L.buildOwned(GAME, unlocks); locked.clear(); status(); renderAll(); gen(); toast("Save carregado");
   } catch (err) { alertBox(err.message || "Não consegui ler esse arquivo."); }
   e.target.value = "";
@@ -267,7 +241,7 @@ function alertBox(t){ $("info").textContent = t; }
 // ---------- tabs ----------
 document.querySelectorAll(".tab").forEach(t => t.onclick = () => {
   document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
-  ["gen","leg","col","farm","rota","coach"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
+  ["gen","leg","col","farm","rota","metas"].forEach(k => $("tab-"+k).classList.toggle("hide", k !== t.dataset.tab));
 });
 
 // ---------- gerar ----------
@@ -398,160 +372,77 @@ function renderCol(){
 }
 $("q").oninput = renderCol; ft.onchange = renderCol; $("sort").onchange = renderCol;
 
-function renderAll(){ fillMono(); renderLegs(); renderCol(); if (typeof renderFarm === "function" && $("farmChips")) renderFarm(); }
-// ---------- coach (agente com a capability sample) ----------
+function renderAll(){ fillMono(); renderLegs(); renderCol(); if (typeof renderFarm === "function" && $("farmChips")) renderFarm(); renderMetas(); }
 const A = window.PRA;
-let sample = null, sampleLimits = null, chat = [], mode = "conversa", runInfo = null, images = [], ctl = null, busy = false, noTools = false, fatal = false;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const inlineMd = s => s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<i>$2</i>");
-function md(s){
-  let html = "", list = false;
-  for (const ln of esc(s).split("\n")) {
-    const li = ln.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)/);
-    if (li) { if (!list) { html += "<ul>"; list = true; } html += "<li>" + inlineMd(li[1]) + "</li>"; continue; }
-    if (list) { html += "</ul>"; list = false; }
-    const h = ln.match(/^#{1,4}\s+(.*)/);
-    if (h) html += "<p><b>" + inlineMd(h[1]) + "</b></p>"; else if (ln.trim()) html += "<p>" + inlineMd(ln) + "</p>";
+
+// ---------- metas (conquistas) ----------
+const METAS_TABS = { faltam: "Faltam", time: "Com time", rota: "Rota e caça", todas: "Todas" };
+let metasTab = "faltam", plans = null;
+function getPlans(){ if (!plans) plans = L.achvPlans(owned, GAME, BIOMES, achvTem, { budget: 10 }); return plans; }
+function planResumo(e){
+  if (e.tipo === "time") return e.time.length ? `Time de ${e.time.length} · força ${Math.round(e.facil * 100)}%` + (e.elegiveis != null ? ` · ${e.elegiveis} iniciais seus valem` : "") : "Nenhum inicial seu cabe nessa regra";
+  if (e.tipo === "rota") return `Chance de chegar ao Espaço com Map: ${pctTxt(e.chance)}`;
+  if (e.tipo === "caca") return e.biomas.length ? `Melhor bioma: ${e.biomas[0].nome} (${pctTxt(e.biomas[0].passagem)} por passagem)` : "";
+  return "";
+}
+function renderMetas(){
+  plans = null;
+  const P = getPlans(), feitas = achvTem ? P.filter(e => e.tem) : [];
+  $("metasHead").innerHTML = achvTem
+    ? `Você tem <b>${feitas.length} de ${P.length}</b> conquistas (${feitas.reduce((s, e) => s + e.p, 0)} de ${P.reduce((s, e) => s + e.p, 0)} pontos).`
+    : `Carregue o seu save (.prsv) lá em cima para o app saber quais conquistas você já tem. Por enquanto aparecem todas.`;
+  $("metasChips").innerHTML = Object.entries(METAS_TABS).map(([k, n]) => `<div class="chip${k === metasTab ? " on" : ""}" data-m="${k}">${n}</div>`).join("");
+  $("metasChips").querySelectorAll("[data-m]").forEach(c => c.onclick = () => { metasTab = c.dataset.m; renderMetas(); });
+  let list = P;
+  if (metasTab === "faltam") list = P.filter(e => e.tem !== true);
+  if (metasTab === "time") list = P.filter(e => e.tipo === "time" && e.tem !== true);
+  if (metasTab === "rota") list = P.filter(e => (e.tipo === "rota" || e.tipo === "caca") && e.tem !== true);
+  $("metasList").innerHTML = list.map(e => `<div class="li click" data-achv="${e.k}">
+      <div class="grow"><div class="nm">${esc(e.n)} <span class="muted" style="font-weight:400;font-size:12px">${e.p} pts</span>${e.tem ? '<span class="tag blue">feita</span>' : ""}</div>
+      <div class="info" style="font-size:12px;white-space:normal">${esc(e.d)}</div>
+      ${planResumo(e) ? `<div class="info" style="font-size:12px;color:var(--acc)">${esc(planResumo(e))}</div>` : ""}</div><span class="muted">›</span></div>`).join("") || `<p class="info">Nada aqui.</p>`;
+  $("metasList").querySelectorAll("[data-achv]").forEach(r => r.onclick = () => openAchv(r.dataset.achv));
+}
+// nome de quem luta: a forma final ou o membro onde a regra manda parar
+const memberName = x => x.b && !x.b.final ? L.pname(x.b.k) : x.m.fin;
+function openAchv(k){
+  const e = getPlans().find(x => x.k === k); if (!e) return;
+  sheetK = null;
+  let body = "";
+  if (e.tipo === "time") {
+    body = e.time.length ? `<h3>Time sugerido (${pt(e.time.reduce((s, x) => s + x.m.cost, 0))} de 10 pontos)</h3><div class="list">${e.time.map(x => `<div class="li">${ballHTML(x.m, 34)}
+        <div class="grow"><div class="nm">${esc(memberName(x))} <span class="muted" style="font-weight:400;font-size:12px">${pt(x.m.cost)} pt · total ${x.b ? x.b.bst : x.m.bst}</span></div>
+        <div class="info" style="font-size:12px;white-space:normal">${x.b && !x.b.final ? `Não evolua além de ${esc(memberName(x))}: ${esc(x.m.fin)} quebra a regra.` : x.m.name !== x.m.fin ? "Começa como " + esc(x.m.name) : "&nbsp;"}</div></div></div>`).join("")}</div>
+      <div class="row" style="margin-top:10px"><button class="btn pri" id="achvGen">Abrir no Gerar</button></div>
+      <p class="note">O time é o mais forte que cabe em 10 pontos com a regra. No Gerar dá para travar, trocar membros e ver golpes, TMs e fraquezas.</p>` : "";
+  } else if (e.tipo === "rota") {
+    const r = A.routeAnswer(A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label }), { de: "TOWN", alvo: e.alvo, wave: 1, tem_map: true });
+    body = `<h3>Rota saindo da Cidade, com Map</h3>${routeHTML(r)}<div class="row" style="margin-top:10px"><button class="btn" id="achvRoute">Abrir na Rotas</button></div>`;
+  } else if (e.tipo === "caca") {
+    body = `<h3>Onde procurar</h3><div class="list">${e.biomas.map(b => `<div class="li"><div class="grow"><div class="nm">${esc(b.nome)}</div>
+        <div class="info" style="font-size:12px;white-space:normal">${b.especies.map(L.pname).map(esc).join(", ")}</div>
+        <div class="info" style="font-size:12px">Numa passagem ${pctTxt(b.passagem)} · chegar lá ${pctTxt(b.chegar)} · por batalha ${pctTxt(b.porBatalha)} · chefe ${pctTxt(b.chefe)}</div></div>
+        <button class="btn" data-bioma="${b.k}">Rota</button></div>`).join("")}</div>
+      <p class="note">Passagem = 10 waves no bioma. Saindo da Cidade, com Map.</p>`;
   }
-  return html + (list ? "</ul>" : "");
+  $("sheet").innerHTML = `<button class="btn x" id="shClose">Fechar</button>
+    <div style="padding-right:70px"><div class="nm" style="font-size:17px">${esc(e.n)}${e.tem ? '<span class="tag blue">feita</span>' : ""}</div>
+    <div class="info">${esc(e.d)} · ${e.p} pontos</div></div>
+    <div class="why" style="margin-top:10px">${esc(e.dica)}</div>${body}`;
+  $("sheetBg").classList.remove("hide"); document.body.style.overflow = "hidden"; $("sheetBg").scrollTop = 0;
+  $("shClose").onclick = closeSheet;
+  if ($("achvGen")) $("achvGen").onclick = () => {
+    const team = e.time.map(x => x.m);
+    const notes = Object.fromEntries(e.time.filter(x => x.b && !x.b.final).map(x => [x.m.k, `Para esta conquista, não evolua além de ${memberName(x)}.`]));
+    locked = new Set(team.map(m => m.k));
+    current = { team, ctx: null, info: `${e.n}: ${e.dica}`, cost: team.reduce((s, m) => s + m.cost, 0), notes };
+    closeSheet(); document.querySelector('.tab[data-tab="gen"]').click(); renderTeam(); window.scrollTo({ top: 0 });
+  };
+  const goRoute = (to) => { closeSheet(); $("rFrom").value = "TOWN"; $("rWave").value = 1; $("rMap").checked = true; $("rTo").value = to; document.querySelector('.tab[data-tab="rota"]').click(); $("rGo").click(); };
+  if ($("achvRoute")) $("achvRoute").onclick = () => goRoute((BIOMES.biomes.find(b => b.k === e.alvo) || {}).nome || e.alvo);
+  $("sheet").querySelectorAll("[data-bioma]").forEach(b => b.onclick = () => goRoute(BIOMES.biomes.find(x => x.k === b.dataset.bioma).nome));
 }
-const ERR = {
-  not_granted: "Você não permitiu o uso do Claude nesta página. Dá para liberar no menu de permissões do artifact.",
-  sampling_disabled: "O Claude não está disponível para esta conta.", not_declared: "Esta versão da página não declara o uso do Claude.",
-  capability_disabled: "O Claude não pode ser usado nesta visualização.", capability_removed: "Este app do Claude não tem esse recurso.",
-  rate_limited: "Muitas chamadas ou limite de uso atingido. Espere um pouco e tente de novo.", session_expired: "Sua sessão no claude.ai expirou. Entre de novo.",
-  image_rejected: "Não deu para usar esse print. Tente outra imagem (PNG ou JPG).", refused: "O Claude não quis responder isso. Tente perguntar de outro jeito.",
-  empty_completion: "Veio uma resposta vazia. Tente pedir algo mais simples.", prompt_too_large: "A conversa ficou grande demais. Comece uma nova conversa.",
-  tools_unavailable: "Este app não roda as ferramentas da página. Vou responder sem consultar seus desbloqueios; mande de novo.",
-  images_unavailable: "Nesta tela o Claude não recebe imagens. Isso costuma acontecer no app do celular ou numa aba antiga: abra o artifact no claude.ai pelo navegador e recarregue a página. Enquanto isso, descreva o time em texto ou use Carregar run.",
-};
-const FATAL = ["not_granted", "sampling_disabled", "not_declared", "capability_disabled", "capability_removed"];
-const PROG = {
-  buscar_iniciais: i => "Buscando nos seus iniciais" + (i.tipo ? " do tipo " + i.tipo : "") + (i.habilidade ? " com " + i.habilidade : ""),
-  detalhes: i => "Vendo os detalhes de " + (i.pokemon || "?"),
-  gerar_time: i => "Gerando um time" + (i.tema ? " (" + i.tema + ")" : ""),
-  analisar_time: () => "Analisando o time",
-  habilidade: i => "Lendo a habilidade " + (i.nome || ""),
-  bioma: i => "Vendo o bioma " + (i.nome || ""),
-};
-
-function bubble(role, html, cls){ const d = document.createElement("div"); d.className = "bub " + role + (cls ? " " + cls : ""); d.innerHTML = html; $("chat").appendChild(d); return d; }
-function renderChat(){
-  $("chat").innerHTML = "";
-  for (const m of chat) bubble(m.role, m.role === "user" ? esc(m.content) : md(m.content), m.err ? "err" : "");
-}
-function renderAtts(){
-  const a = [];
-  if (runInfo) a.push(`<span class="att">${esc(runInfo.rotulo)} <b data-x="run">×</b></span>`);
-  images.forEach((f, i) => a.push(`<span class="att">Print: ${esc(f.name || "imagem")} <b data-x="img${i}">×</b></span>`));
-  $("atts").innerHTML = a.join("");
-  $("atts").querySelectorAll("[data-x]").forEach(b => b.onclick = () => { const x = b.dataset.x; if (x === "run") runInfo = null; else images.splice(+x.slice(3), 1); renderAtts(); renderMode(); });
-}
-
-const MODE_UI = {
-  conversa: () => `Pergunte o que quiser: montar time, comparar Pokémon, o que fazer com os doces, qual tema combina com você. O Coach consulta seus desbloqueios.`,
-  carry: () => `Escolha o Pokémon que vai carregar a run e o Coach monta o suporte em volta dele.
-    <div class="row"><input type="text" id="carryIn" list="ownedList" placeholder="Ex.: Garchomp" style="flex:1;min-width:140px"><button class="btn pri" id="carryGo">Montar em volta dele</button></div>
-    <datalist id="ownedList">${owned.map(m => `<option value="${esc(m.fin)}">`).join("")}</datalist>`,
-  conselheiro: () => `Carregue a sessão exportada do jogo ou anexe um print da tela, e o Coach diz quem trocar, qual bioma escolher e o que caçar, pensando nas próximas lutas fixas.
-    <div class="row"><button class="btn pri" id="advGo">Analisar minha run</button></div>`,
-  raiox: () => `Carregue o histórico de runs exportado e o Coach aponta padrões: onde você perde, contra quem, quais times foram longe.
-    <div class="row"><button class="btn pri" id="xrayGo" ${runInfo && runInfo.tipo === "history" ? "" : "disabled"}>Fazer o Raio X</button></div>`,
-};
-function renderMode(){
-  $("modes").innerHTML = Object.entries(A.MODES).map(([k, v]) => `<div class="chip${k === mode ? " on" : ""}" data-m="${k}">${v.nome}</div>`).join("");
-  $("modes").querySelectorAll("[data-m]").forEach(c => c.onclick = () => { mode = c.dataset.m; renderMode(); });
-  $("modeBox").innerHTML = MODE_UI[mode]();
-  const g = id => document.getElementById(id);
-  if (g("carryGo")) g("carryGo").onclick = () => { const v = g("carryIn").value.trim(); if (v) send(`Quero carregar a run com ${v}. Monte o suporte em volta dele.`); };
-  if (g("advGo")) g("advGo").onclick = () => send(runInfo || images.length ? "Analisa minha run: o que eu faço agora?" : "Ainda não carreguei a run. O que você precisa que eu mande?");
-  if (g("xrayGo")) g("xrayGo").onclick = () => send("Faz o Raio X das minhas runs.");
-}
-
-function setBusy(b){ busy = b; $("send").disabled = b; $("stop").classList.toggle("hide", !b); }
-function showTeamFromAgent(r, o){
-  current = r; theme = o.theme;
-  document.querySelectorAll("#themes .chip").forEach(x => x.classList.toggle("on", x.dataset.k === theme));
-  if ([...$("budget").options].some(x => +x.value === o.budget)) $("budget").value = o.budget;
-  $("size").value = o.size; renderTeam();
-}
-
-async function send(text){
-  text = String(text || "").trim();
-  if (!text || busy || !sample) return;
-  const ctx = A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label });
-  ctx.onTeam = showTeamFromAgent;
-  const sentImages = images.slice();
-  chat.push({ role: "user", content: text + (sentImages.length ? `\n[${sentImages.length} print anexado]` : "") });
-  images = []; renderAtts(); renderChat(); $("msg").value = "";
-  const out = bubble("assistant", "<p>Pensando...</p>");
-  const prog = document.createElement("div"); prog.className = "prog";
-  let answered = false;
-  const show = t => { answered = true; out.innerHTML = md(t); out.appendChild(prog); out.scrollIntoView({ block: "end" }); };
-  ctl = new AbortController(); setBusy(true);
-  const opts = { cache: false, signal: ctl.signal, onText: ({ text }) => show(text) };
-  if (!noTools && sampleLimits && sampleLimits.tools) {
-    const ts = A.tools(ctx).slice(0, sampleLimits.tools.maxCount || 99);
-    opts.tools = ts.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema,
-      execute: async (input) => { prog.textContent = (PROG[t.name] || (() => t.name))(input || {}) + "..."; if (!answered) { out.innerHTML = "<p>Consultando...</p>"; out.appendChild(prog); } return t.run(input || {}); } }));
-  }
-  if (sentImages.length) opts.images = sentImages;
-  try {
-    // avisos de erro da página ficam na tela, mas não vão para o Claude como se fossem respostas dele
-    const turns = A.buildTurns(ctx, mode, runInfo, chat.filter(m => !m.err).map(({ role, content }) => ({ role, content })));
-    const r = await sample(turns, opts);
-    chat.push({ role: "assistant", content: r.text + (r.truncated ? "\n\n(A resposta foi cortada. Peça uma parte de cada vez.)" : "") });
-  } catch (e) {
-    const code = e && e.code;
-    if (code === "tools_unavailable") noTools = true;
-    if (e && e.text && code !== "refused") chat.push({ role: "assistant", content: e.text + (code === "cancelled" ? "\n\n(interrompido)" : "") });
-    if (code !== "cancelled") chat.push({ role: "assistant", content: ERR[code] || "Deu um erro de conexão. Tente de novo.", err: true });
-    if (FATAL.includes(code)) fatal = true;
-  } finally {
-    setBusy(false);
-    if (fatal) { $("send").disabled = true; $("msg").disabled = true; }
-    renderChat();
-    const last = $("chat").lastElementChild; if (last) last.scrollIntoView({ block: "end" });
-  }
-}
-
-$("send").onclick = () => send($("msg").value);
-$("msg").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send($("msg").value); } });
-$("stop").onclick = () => { if (ctl) ctl.abort(); };
-$("newChat").onclick = () => { if (busy) return; chat = []; renderChat(); };
-$("imgBtn").addEventListener("click", e => {
-  // sem images em limits() o Claude não recebe o print: avisar em vez de esconder o botão
-  if (sampleLimits && !sampleLimits.images) { e.preventDefault(); toast("Print indisponível nesta tela"); chat.push({ role: "assistant", content: ERR.images_unavailable, err: true }); renderChat(); }
-});
-$("imgFile").addEventListener("change", e => {
-  const max = (sampleLimits && sampleLimits.images && sampleLimits.images.maxCount) || 1;
-  images = [...images, ...e.target.files].slice(0, max); e.target.value = "";
-  if (mode === "conversa") mode = "conselheiro";
-  renderAtts(); renderMode();
-});
-$("runFile").addEventListener("change", async e => {
-  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
-  try {
-    let txt = (await f.text()).trim(), data;
-    data = txt.startsWith("{") ? JSON.parse(txt) : JSON.parse(CryptoJS.AES.decrypt(txt, SAVE_KEY).toString(CryptoJS.enc.Utf8));
-    const kind = A.detectSave(data);
-    const ctx = A.makeCtx({ game: GAME, biomes: BIOMES, dex: DEX, owned, label });
-    if (kind === "session") { const s = A.summarizeSession(ctx, data); runInfo = { tipo: "session", resumo: s, rotulo: `Run: wave ${s.wave}, ${s.bioma}` }; mode = "conselheiro"; }
-    else if (kind === "history") { const h = A.summarizeHistory(ctx, data); runInfo = { tipo: "history", resumo: h, rotulo: `Histórico: ${h.runs} runs` }; mode = "raiox"; }
-    else if (kind === "system") { toast("Esse é o save principal: use o botão Carregar save lá em cima"); return; }
-    else { toast("Não reconheci esse arquivo"); return; }
-    renderAtts(); renderMode(); toast(runInfo.rotulo);
-  } catch (err) { toast("Não consegui ler esse arquivo"); }
-});
-
-(async () => {
-  try { sample = window.claude && typeof window.claude.use === "function" ? await window.claude.use("sample") : null; } catch (e) { sample = null; }
-  if (!sample) { $("coachOff").textContent = "O Coach só funciona com a página aberta no claude.ai, publicada com a permissão de usar o Claude (capability sample). O resto da página funciona normalmente."; return; }
-  sampleLimits = await sample.limits().catch(() => null);
-  $("coachOff").classList.add("hide"); $("coachOn").classList.remove("hide");
-  if (sampleLimits && sampleLimits.images && sampleLimits.images.mediaTypes) $("imgFile").accept = sampleLimits.images.mediaTypes.join(",");
-  renderMode(); renderAtts();
-})();
 
 // ---------- rotas (Fase 4) ----------
 $("rFrom").innerHTML = BIOMES.biomes.filter(b => b.k !== "END").map(b => `<option value="${b.k}">${esc(b.nome)}</option>`).join("");

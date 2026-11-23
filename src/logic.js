@@ -92,7 +92,7 @@
       const names = new Set([...s.mv, ...egg].map(i => game.moves[i][0]));
       out.push({ k: s.k, id: s.id, name: pname(s.k), fin: pname(s.f), finKey: s.f, ty: s.ty, st: s.st, bst, cost: starterValue(s.c, vr), base: s.c, lg: s.lg,
         abil: uniq, allAb: s.ab.filter(x => x !== "NONE"), passive, passiveStart, egg, nats, nat: best, natFit: bs, iv, ivSum, role: r, mv: s.mv, score,
-        ch: s.ch, et: s.et || 0, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
+        ch: s.ch, et: s.et || 0, ln: s.ln, ds: s.ds || 0, tms: tmsOf(s, game), forms: s.fo || [], candy: candy || 0, vr, paUnlocked: !!(pa & 1),
         hasSetup: (r === "P" ? SETUP_P : SETUP_E).some(n => names.has(n)), hasHeal: HEAL.some(n => names.has(n)) });
     }
     // tipos de dano dos golpes sugeridos (sem clima): usado na cobertura ofensiva do tema Equilibrado
@@ -750,7 +750,128 @@
     return n;
   }
 
-  const api = { NATS, starterValue, starterSheet, sheetBuy, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
+  // ---- Conquistas (src/system/achv.ts). Regras dos desafios conferidas em src/data/challenge.ts.
+
+  // Melhor membro da linha (maior total) alcançável passando só por membros que cumprem a regra. O inicial também
+  // precisa cumprir (applyStarterChoice); em batalha vale a espécie atual (applyPokemonInBattle), então quem evolui
+  // para fora da regra não pode lutar: o plano diz até onde evoluir.
+  function bestInLine(m, pred) {
+    const ln = m.ln;
+    if (!ln || !ln.length || !pred(ln[0])) return null;
+    const ok = new Set([0]);
+    for (let i = 1; i < ln.length; i++) if (ok.has(ln[i][4]) && pred(ln[i])) ok.add(i);
+    let b = 0;
+    for (const i of ok) if (ln[i][3] > ln[b][3]) b = i;
+    return { k: ln[b][0], bst: ln[b][3], ty: ln[b][2], final: ln[b][0] === m.finKey };
+  }
+  const adjScore = (m, b) => m.score - m.bst + b.bst;
+  // expoente do valor na mochila: alto prefere poucos fortes a muitos baratos
+  const ACHV_EXP = 5;
+
+  // time para uma regra de linha: mochila 0/1 pelo score ajustado ao membro que pode lutar
+  function ruleTeam(owned, pred, budget, size, ex) {
+    const B = new Map();
+    for (const m of owned) { const b = bestInLine(m, pred); if (b) B.set(m, b); }
+    const pool = [...B.keys()];
+    const team = knapsack(pool, budget, size, m => Math.pow(adjScore(m, B.get(m)) / 450, ex || ACHV_EXP));
+    return { team: team.map(m => ({ m, b: B.get(m) })), elegiveis: pool.length };
+  }
+
+  // Força do time de 0 a 1: score médio ajustado (550 = muito bom) e time completo
+  function teamForce(team, size) {
+    if (!team.length) return 0;
+    const avg = team.reduce((s, x) => s + (x.b ? adjScore(x.m, x.b) : x.m.score), 0) / team.length;
+    return Math.min(1, avg / 550) * (team.length / size);
+  }
+
+  // Chance de ver alguém do conjunto por bioma (selvagem ou chefe), como em huntSpecies
+  function classHunt(biomes, keys, from, steps, hasMap) {
+    const out = [];
+    // o END fica de fora: no Clássico as waves de lá são fixas e o chefe é o Eternatus da wave 200
+    for (const b of biomes.biomes.filter(x => x.k !== "END")) {
+      const wild = biomeOdds(biomes, b.k), boss = b.pool.BOSS ? biomeOdds(biomes, b.k, null, true) : {};
+      const ks = [...keys].filter(k => wild[k] || boss[k]);
+      if (!ks.length) continue;
+      const pw = ks.reduce((s, k) => s + (wild[k] || 0), 0), pb = ks.reduce((s, k) => s + (boss[k] || 0), 0);
+      const battles = 9 * (b.trainerChance ? 1 - 1 / b.trainerChance : 1);
+      const stay = 1 - Math.pow(1 - pw, battles) * (1 - pb);
+      const reach = from === b.k ? 1 : reachTable(biomes, b.k, steps, hasMap)[from];
+      out.push({ k: b.k, nome: b.nome, especies: ks, porBatalha: pw, chefe: pb, passagem: stay, chegar: reach, total: stay * reach });
+    }
+    return out.sort((a, b) => b.total - a.total);
+  }
+
+  const ACHV_SEM_PLANO = "Sem plano por enquanto: depende de sorte, de grind ou de regras que o app ainda não simula.";
+  // Lista das conquistas com o que o app sugere para cada uma. tem: Set de chaves de achvUnlocks (null = save sem
+  // essa informação). Devolve [{k, n, d, p, s, tem, tipo: time|rota|caca|dica, ...}], as que faltam primeiro e,
+  // entre elas, as mais fáceis com o seu save.
+  function achvPlans(owned, game, biomes, tem, opts) {
+    opts = opts || {};
+    const budget = opts.budget || 10, size = 6;
+    const startSteps = switchesLeft(1);
+    const out = [];
+    for (const a of game.achv || []) {
+      // o jogo monta a descrição do Monotipo com o nome do tipo traduzido; aqui vem a chave em inglês
+      const d = a.c === "MonoTypeChallengeAchv" && TYPE_PT[a.v] ? a.d.replace(a.v, TYPE_PT[a.v]) : a.d;
+      const e = { k: a.k, n: a.n, d, p: a.p, s: a.s, tem: tem ? !!tem[a.k] : null, tipo: "dica", dica: ACHV_SEM_PLANO, facil: 0 };
+      if (/^MONO_GEN_/.test(a.k)) {
+        const r = ruleTeam(owned, x => x[1] === a.v, budget, size);
+        Object.assign(e, { tipo: "time", time: r.team, elegiveis: r.elegiveis, facil: teamForce(r.team, size),
+          dica: `Só iniciais da geração ${a.v}. Quem evoluir para uma espécie de outra geração não pode lutar, então o plano diz até onde evoluir.` });
+      } else if (/^MONO_/.test(a.k) && TYPES.includes(a.v)) {
+        const r = ruleTeam(owned, x => x[2].includes(a.v), budget, size);
+        Object.assign(e, { tipo: "time", time: r.team, elegiveis: r.elegiveis, facil: teamForce(r.team, size),
+          dica: `Todo mundo precisa ser do tipo ${TYPE_PT[a.v]} o tempo todo, também depois de evoluir.` });
+      } else if (a.k === "PASSIVES_CHALLENGE") {
+        const team = knapsack(owned, budget, size, m => Math.pow((m.score - (m.passive ? 30 : 0)) / 450, 3)).map(m => ({ m }));
+        Object.assign(e, { tipo: "time", time: team, facil: teamForce(team, size) * 0.8,
+          dica: "No desafio Passivas os seus Pokémon e os selvagens lutam sem passiva; treinadores e o chefe final continuam com a deles. O time ignora as passivas liberadas." });
+      } else if (a.k === "FRESH_START") {
+        // Novo Começo: só os iniciais padrão e as evoluções deles, com custo cheio e sem egg moves nem passivas
+        const fresh = buildOwned(game, Object.fromEntries(game.starters.filter(s => s.ds).map(s => [s.id, [0, 1, 0, 0, 2, [15, 15, 15, 15, 15, 15], 0]])));
+        const team = knapsack(fresh, budget, size, m => Math.pow(m.bst / 450, 3)).map(m => ({ m }));
+        Object.assign(e, { tipo: "time", time: team, facil: 0.5,
+          dica: "Novo Começo zera tudo durante a run: só os iniciais clássicos de cada geração, custo cheio, sem egg moves, passivas nem natures extras." });
+      } else if (a.k === "UNEVOLVED_CLASSIC_VICTORY") {
+        // pelo menos um membro que ainda pode evoluir quando zerar: o melhor pré evolução do save (Eviolite ajuda)
+        let nfe = null;
+        for (const m of owned) for (let i = 0; i < (m.ln || []).length; i++) {
+          const x = m.ln[i];
+          if (m.ln.some(y => y[4] === i) && (!nfe || x[3] > nfe.b.bst)) nfe = { m, b: { k: x[0], bst: x[3], ty: x[2], final: false } };
+        }
+        const rest = nfe ? knapsack(owned.filter(m => m.finKey !== nfe.m.finKey), budget - nfe.m.cost, size - 1) : [];
+        const team = nfe ? [nfe, ...rest.map(m => ({ m }))] : [];
+        Object.assign(e, { tipo: "time", time: team, facil: teamForce(team, size),
+          dica: nfe ? `Leve ${title(nfe.b.k)} sem evoluir até o fim (Eviolite ajuda muito). O resto do time é o mais forte que cabe.` : "Nenhum inicial seu tem pré evolução." });
+      } else if (a.k === "CLASSIC_VICTORY") {
+        const r = generate(owned, { theme: "equilibrado", budget, size, rng: () => 0.5 });
+        Object.assign(e, { tipo: "time", time: r.team.map(m => ({ m })), facil: teamForce(r.team.map(m => ({ m })), size), dica: "Zerar o Clássico. O time sugerido é o Equilibrado." });
+      } else if (a.k === "MEGA_EVOLVE" || a.k === "GIGANTAMAX") {
+        const acc = a.k === "MEGA_EVOLVE" ? "mega" : "gmax";
+        const pool = owned.filter(m => (m.forms || []).some(f => f.acc === acc));
+        const best = pool.sort((x, y) => y.score - x.score)[0];
+        const rest = best ? knapsack(owned.filter(m => m.finKey !== best.finKey), budget - best.cost, size - 1) : [];
+        const team = best ? [{ m: best }, ...rest.map(m => ({ m }))] : [];
+        Object.assign(e, { tipo: "time", time: team, facil: best ? 0.9 : 0,
+          dica: best ? `Leve ${best.fin}, que tem ${acc === "mega" ? "Mega" : "Gigantamax"}. ${acc === "mega" ? "O Mega Bracelet" : "O Dynamax Band"} sai na loja (raridade Rogue) e, até 31/12/2026, um evento dá na wave 115 do Clássico. O item da forma só aparece se alguém do time puder usar.` : `Nenhum inicial seu tem ${acc === "mega" ? "Mega" : "Gigantamax"}.` });
+      } else if (a.k === "BREEDERS_IN_SPACE") {
+        const r = planRoute(biomes, "TOWN", "SPACE", startSteps, true);
+        Object.assign(e, { tipo: "rota", alvo: "SPACE", chance: r ? r.chance : 0, facil: (r ? r.chance : 0) * 0.5,
+          dica: "No Espaço não tem treinador comum: o Criador vem do evento misterioso Expert Pokémon Breeder (raridade Ultra, só no Espaço, entre as waves 25 e 180). Chegue ao Espaço antes da wave 180 e fique de olho nos eventos." });
+      } else if (a.k === "CATCH_LEGENDARY" || a.k === "CATCH_MYTHICAL" || a.k === "CATCH_SUB_LEGENDARY") {
+        const lg = { CATCH_LEGENDARY: 1, CATCH_SUB_LEGENDARY: 2, CATCH_MYTHICAL: 3 }[a.k];
+        const keys = new Set(game.starters.filter(s => s.lg === lg).flatMap(s => (s.ln || [[s.k]]).map(x => x[0])));
+        const h = classHunt(biomes, keys, "TOWN", startSteps, true).slice(0, 3);
+        Object.assign(e, { tipo: "caca", biomas: h, facil: h.length ? h[0].total * 0.6 : 0,
+          dica: h.length ? "Biomas com mais chance de aparecer um deles, saindo da Cidade com Map. Antes da wave 55 o jogo costuma trocar lendários por outro Pokémon, então a caça rende mais depois." : "Nenhum aparece nos biomas." });
+      }
+      out.push(e);
+    }
+    const ord = { time: 0, rota: 1, caca: 1, dica: 2 };
+    return out.sort((x, y) => (x.tem === true) - (y.tem === true) || ord[x.tipo] - ord[y.tipo] || y.facil - x.facil);
+  }
+
+  const api = { bestInLine, ruleTeam, classHunt, achvPlans, NATS, starterValue, starterSheet, sheetBuy, TYPES, TYPE_PT, CHART, eff, buildOwned, suggestMoves, suggestTMs, generate, teamWeak, THEMES, WEATHER, title, pname, setterOf, userOf,
     defMult, balanceReport, lateGame, bigForms, formText, INTERACTIONS, interactionsFor, CHALLENGES, genOf,
     tmsOf, candyCosts, biomeOdds, nextBiomeOdds, linkOutcomes, reachTable, switchesLeft, minSwitches, planRoute, huntSpecies, eggOdds, farmTargets };
   if (typeof module !== "undefined") module.exports = api; else root.PRL = api;
